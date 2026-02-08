@@ -1,28 +1,40 @@
-<script setup>
+<script setup lang="ts">
 import { ref, watch } from 'vue';
 import { Plus, Edit, Delete } from '@element-plus/icons-vue';
+import type { MockGroup, MockRule } from '@/types/mock';
+import {TagType} from "@/types/groupSideBar"; // 引入类型
 
-const props = defineProps({
-  groups: Array,
-  currentRuleId: Number
-});
+// 定义 Props (使用 TS 泛型语法)
+const props = defineProps<{
+  groups: MockGroup[];
+  currentRuleId: number | null;
+}>();
 
-const emit = defineEmits([
-  'group-add', 'group-rename', 'group-delete',
-  'rule-add', 'rule-select', 'rule-toggle'
-]);
+// 定义 Emits
+const emit = defineEmits<{
+  (e: 'group-add'): void;
+  (e: 'group-rename', group: MockGroup): void;
+  (e: 'group-delete', idx: number): void;
+  (e: 'rule-add', group: MockGroup): void;
+  (e: 'rule-select', rule: MockRule): void;
+  (e: 'rule-toggle'): void;
+}>();
 
-const activeGroupNames = ref([]);
+const activeGroupNames = ref<number[]>([]);
 
-// 监听数据变化，默认展开所有组（或者保持状态）
 watch(() => props.groups, (newVal) => {
   if (newVal && activeGroupNames.value.length === 0) {
     activeGroupNames.value = newVal.map(g => g.id);
   }
 }, { immediate: true });
 
-const methodTagType = (method) => {
-  const map = { GET: '', POST: 'success', PUT: 'warning', DELETE: 'danger' };
+const methodTagType = (method: string) => {
+  const map: Record<string, TagType> = {
+    GET: 'primary',
+    POST: 'success',
+    PUT: 'warning',
+    DELETE: 'danger'
+  };
   return map[method] || 'info';
 };
 </script>

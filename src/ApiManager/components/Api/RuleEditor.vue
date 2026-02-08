@@ -1,16 +1,22 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import { Check, Delete, VideoPlay } from '@element-plus/icons-vue';
+import type { MockRule } from '@/types/mock';
 
-const props = defineProps({
-  modelValue: { type: Object, default: () => ({}) }, // 正在编辑的规则对象
-  testResult: String,
-  hasSelection: Boolean
-});
+const props = defineProps<{
+  modelValue: Partial<MockRule>; // 使用 Partial，允许空对象
+  testResult: string;
+  hasSelection: boolean;
+}>();
 
-const emit = defineEmits(['update:modelValue', 'save', 'delete', 'test']);
+const emit = defineEmits<{
+  (e: 'update:modelValue', val: Partial<MockRule>): void;
+  (e: 'save'): void;
+  (e: 'delete'): void;
+  (e: 'test'): void;
+}>();
 
-// 使用计算属性代理 v-model，方便处理 props
+// computed 的类型通常能自动推断
 const rule = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)

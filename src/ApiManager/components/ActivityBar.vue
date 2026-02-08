@@ -1,17 +1,31 @@
-<script setup>
+<script setup lang="ts">
 import {
   Connection, DocumentCopy, Setting, InfoFilled
 } from '@element-plus/icons-vue';
+import type {Component} from "vue";
 
 // 接收当前激活的 Tab，并支持双向绑定
-defineProps(['modelValue']);
-defineEmits(['update:modelValue']);
+defineProps<{
+  modelValue: string
+}>();
 
-const menuItems = [
+defineEmits<{
+  (e: 'update:modelValue', val: string): void
+}>();
+
+// 定义菜单项接口
+interface NavItem {
+  key: string;
+  label: string;
+  icon: Component;
+}
+
+const menuItems: NavItem[] = [
   { key: 'api', label: '接口', icon: Connection },
   { key: 'template', label: '模板', icon: DocumentCopy },
 ];
-const bottomItems = [
+
+const bottomItems: NavItem[] = [
   { key: 'settings', label: '设置', icon: Setting },
   { key: 'about', label: '关于', icon: InfoFilled },
 ];
