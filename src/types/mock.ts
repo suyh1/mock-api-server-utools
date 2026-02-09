@@ -1,5 +1,3 @@
-// src/types/index.ts
-
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 export interface MockRule {
@@ -7,13 +5,19 @@ export interface MockRule {
     active: boolean;
     method: HttpMethod;
     url: string;
-    response: string; // json字符串
+    response: string;
     delay: number;
+}
+
+export interface ServiceConfig {
+    port: number;
+    prefix: string;
+    running: boolean; // 前端状态，需与后端同步
 }
 
 export interface MockGroup {
     id: number;
     name: string;
-    expand?: boolean; // 前端 UI 状态，可选
     children: MockRule[];
+    config?: ServiceConfig; // 分组的服务配置
 }

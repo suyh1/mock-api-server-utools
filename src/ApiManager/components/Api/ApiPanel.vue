@@ -4,13 +4,16 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import GroupSidebar from './GroupSidebar.vue';
 import RuleEditor from './RuleEditor.vue';
 import type { MockGroup, MockRule } from '@/types/mock'; // 确保路径指向你的 src/types.ts
+import ServiceConfigPanel from './ServiceConfig.vue';
 
 // 后端服务地址
 const API_BASE = 'http://localhost:3000';
-
-// --- 响应式状态 (使用泛型显式定义类型) ---
 const groups = ref<MockGroup[]>([]);
+
+// 视图控制状态
+const configGroupId = ref<number | null>(null); // 当前正在配置的分组 ID
 const currentRuleId = ref<number | null>(null);
+
 const editingRule = ref<Partial<MockRule>>({}); // 编辑中的规则，可能不完整所以用 Partial
 const testResult = ref<string>('');
 
@@ -95,6 +98,21 @@ const handleDeleteGroup = (idx: number) => {
   }).catch(() => {});
 };
 
+// 点击分组配置
+const handleGroupConfig = (group: MockGroup) => {
+  configGroupId.value = group.id;
+  currentRuleId.value = null; // 互斥：清空接口选中
+};
+
+// 更新分组信息（从配置页回调）
+const handleUpdateGroup = (updatedGroup: MockGroup) => {
+  const idx = groups.value.findIndex(g => g.id === updatedGroup.id);
+  if (idx !== -1) {
+    groups.value[idx] = updatedGroup;
+    // 注意：saveData 由组件事件触发，这里只更新本地状态
+  }
+};
+
 // --- 业务逻辑：接口规则管理 ---
 
 const handleAddRule = (group: MockGroup) => {
@@ -115,6 +133,7 @@ const handleAddRule = (group: MockGroup) => {
 
 const handleSelectRule = (rule: MockRule) => {
   currentRuleId.value = rule.id;
+  configGroupId.value = null; // 互斥：清空分组配置
   // 深拷贝，防止在编辑器修改时直接影响列表显示（直到点击保存）
   editingRule.value = JSON.parse(JSON.stringify(rule));
   testResult.value = ''; // 切换接口时清空测试结果
@@ -206,25 +225,39 @@ onMounted(() => {
         @group-add="handleAddGroup"
         @group-rename="handleRenameGroup"
         @group-delete="handleDeleteGroup"
+        @group-config="handleGroupConfig"
         @rule-add="handleAddRule"
         @rule-select="handleSelectRule"
         @rule-toggle="handleToggleRule"
     />
 
+    <ServiceConfigPanel
+        v-if="configGroupId"
+        :group="groups.find(g => g.id === configGroupId)!"
+        @update:group="handleUpdateGroup"
+        @save="saveData"
+    />
+
     <RuleEditor
+        v-else-if="currentRuleId"
         v-model="editingRule"
         :testResult="testResult"
-        :hasSelection="!!currentRuleId"
+        :hasSelection="true"
         @save="handleSaveRule"
         @delete="handleDeleteRule"
         @test="handleRunTest"
     />
+
+    <el-main v-else class="empty-container">
+      <el-empty description="请点击分组设置或选择接口" />
+    </el-main>
   </el-container>
 </template>
 
 <style scoped>
-.full-height {
-  height: 100%;
-  overflow: hidden; /* 防止出现双重滚动条 */
+.full-height { height: 100%; overflow: hidden; }
+.empty-container {
+  display: flex; justify-content: center; align-items: center;
+  height: 100%; background: var(--bg-card);
 }
 </style>

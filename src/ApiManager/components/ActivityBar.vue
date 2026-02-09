@@ -1,30 +1,16 @@
 <script setup lang="ts">
-import {
-  Connection, DocumentCopy, Setting, InfoFilled
-} from '@element-plus/icons-vue';
-import type {Component} from "vue";
+import { Connection, DocumentCopy, Setting, InfoFilled } from '@element-plus/icons-vue';
+import type { Component } from 'vue';
 
-// 接收当前激活的 Tab，并支持双向绑定
-defineProps<{
-  modelValue: string
-}>();
+defineProps<{ modelValue: string }>();
+defineEmits<{ (e: 'update:modelValue', val: string): void }>();
 
-defineEmits<{
-  (e: 'update:modelValue', val: string): void
-}>();
-
-// 定义菜单项接口
-interface NavItem {
-  key: string;
-  label: string;
-  icon: Component;
-}
+interface NavItem { key: string; label: string; icon: Component; }
 
 const menuItems: NavItem[] = [
   { key: 'api', label: '接口', icon: Connection },
   { key: 'template', label: '模板', icon: DocumentCopy },
 ];
-
 const bottomItems: NavItem[] = [
   { key: 'settings', label: '设置', icon: Setting },
   { key: 'about', label: '关于', icon: InfoFilled },
@@ -42,7 +28,9 @@ const bottomItems: NavItem[] = [
           @click="$emit('update:modelValue', item.key)"
           :title="item.label"
       >
-        <el-icon :size="24"><component :is="item.icon" /></el-icon>
+        <div class="active-indicator" v-if="modelValue === item.key"></div>
+
+        <el-icon :size="22"><component :is="item.icon" /></el-icon>
         <span class="nav-label">{{ item.label }}</span>
       </div>
     </div>
@@ -56,7 +44,8 @@ const bottomItems: NavItem[] = [
           @click="$emit('update:modelValue', item.key)"
           :title="item.label"
       >
-        <el-icon :size="24"><component :is="item.icon" /></el-icon>
+        <div class="active-indicator" v-if="modelValue === item.key"></div>
+        <el-icon :size="22"><component :is="item.icon" /></el-icon>
         <span class="nav-label">{{ item.label }}</span>
       </div>
     </div>
@@ -65,27 +54,55 @@ const bottomItems: NavItem[] = [
 
 <style scoped>
 .activity-bar {
-  width: 64px;
-  background-color: #2b2d30;
+  width: 72px; /* 稍微宽一点点 */
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 10px 0;
+  padding: 16px 0;
   flex-shrink: 0;
-  z-index: 10;
+  /* 关键：背景透明，透出 app-frame 的颜色 */
+  background: transparent;
 }
+
 .nav-item {
+  position: relative; /* 为了定位指示条 */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 64px;
+  height: 60px;
+  width: 56px;
+  margin: 4px auto; /* 居中 */
+  border-radius: 12px; /* 方圆形按钮 */
   cursor: pointer;
-  color: #8c8c8c;
-  transition: all 0.2s;
-  border-left: 3px solid transparent;
+  color: var(--text-secondary);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.nav-item:hover { color: #fff; background-color: #3e4043; }
-.nav-item.active { color: #fff; border-left-color: #409eff; background-color: #35373a; }
-.nav-label { font-size: 10px; margin-top: 4px; }
+
+.nav-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  color: var(--primary-color);
+  background-color: var(--bg-hover); /* 或者是白色背景，看个人喜好 */
+}
+
+/* 选中时的指示条（左侧小竖条） */
+.active-indicator {
+  position: absolute;
+  left: -8px; /* 在 Bar 的边缘 */
+  width: 4px;
+  height: 24px;
+  background-color: var(--primary-color);
+  border-radius: 0 4px 4px 0;
+}
+
+.nav-label {
+  font-size: 10px;
+  margin-top: 4px;
+  font-weight: 500;
+  transform: scale(0.9);
+}
 </style>

@@ -60,17 +60,88 @@ const rule = computed({
 </template>
 
 <style scoped>
-.editor-main { padding: 0; display: flex; flex-direction: column; height: 100%; }
-.editor-layout { display: flex; flex-direction: column; height: 100%; }
-.editor-toolbar { padding: 15px; display: flex; gap: 10px; border-bottom: 1px solid #eee; background: #fff; }
-.url-input { flex: 1; }
-.editor-settings { padding: 10px 15px; display: flex; align-items: center; gap: 10px; background: #fdfdfd; border-bottom: 1px solid #eee; font-size: 13px; color: #666; }
-.json-editor { flex: 1; display: flex; flex-direction: column; padding: 15px; overflow: hidden; }
-.section-title { font-weight: 600; margin-bottom: 8px; color: #333; font-size: 14px; }
-.code-textarea { flex: 1; height: 100%; }
-:deep(.el-textarea__inner) { height: 100% !important; font-family: Consolas, monospace; background: #fafafa; color: #333; }
-.test-panel { height: 200px; border-top: 1px solid #eee; display: flex; flex-direction: column; background: #fff; }
-.panel-header { padding: 8px 15px; display: flex; justify-content: space-between; align-items: center; background: #f5f7fa; border-bottom: 1px solid #eee; font-size: 13px; font-weight: 600; }
-.test-result { flex: 1; background: #2b2b2b; color: #a9b7c6; padding: 10px 15px; overflow: auto; font-size: 12px; }
-.test-result pre { margin: 0; font-family: Consolas, monospace; }
+.editor-main {
+  padding: 0;
+  display: flex;
+  flex-direction:
+      column;
+  height: 100%;
+}
+.editor-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.editor-toolbar {
+  padding: 15px;
+  display: flex;
+  gap: 10px;
+  background: transparent; /* 或者 var(--bg-card) */
+  border-bottom: 1px solid var(--border-color);
+}
+.url-input {
+  flex: 1;
+}
+.editor-settings {
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fdfdfd;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+  color: #666;
+}
+.json-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 15px;
+  overflow: hidden;
+}
+.section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #333;
+  font-size: 14px;
+}
+.code-textarea {
+  flex: 1;
+  height: 100%;
+}
+:deep(.el-textarea__inner) {
+  height: 100% !important;
+  font-family: Consolas, monospace;
+  background: #fafafa;
+  color: #333;
+}
+.test-panel {
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-color);
+  background: transparent;
+}
+.panel-header {
+  padding: 8px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-hover); /* 稍微深一点的背景区分 */
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+  font-weight: 600;
+}
+.test-result {
+  flex: 1;
+  background: #2b2b2b;
+  color: #a9b7c6;
+  padding: 10px 15px;
+  overflow: auto;
+  font-size: 12px;
+}
+.test-result pre {
+  margin: 0;
+  font-family: Consolas, monospace;
+}
 </style>
