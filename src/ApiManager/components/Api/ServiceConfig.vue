@@ -24,11 +24,14 @@ const formData = ref<ServiceConfig>({
 
 const isRunning = computed(() => formData.value.running);
 
-onMounted(() => {
+onMounted(async () => {
   if (window.services) {
     localIp.value = window.services.getLocalIP();
     ADMIN_API.value = `${window.services.getServerUrl()}/_admin/service`;
   }
+
+  // 【修复点】确保在 IP 和 API 地址更新后，再执行一次状态同步
+  await syncStatus();
 });
 
 // 初始化数据
