@@ -178,15 +178,15 @@ const removeRow = (list: KeyValueItem[], index: number) => {
         </el-tabs>
       </div>
 
-      <div class="test-panel">
-        <div class="panel-header">
-          <span>调试结果</span>
-          <el-button type="primary" size="small" :icon="VideoPlay" @click="$emit('test')">发送请求</el-button>
-        </div>
-        <div class="test-result">
-          <pre>{{ testResult }}</pre>
-        </div>
-      </div>
+<!--      <div class="test-panel">-->
+<!--        <div class="panel-header">-->
+<!--          <span>调试结果</span>-->
+<!--          <el-button type="primary" size="small" :icon="VideoPlay" @click="$emit('test')">发送请求</el-button>-->
+<!--        </div>-->
+<!--        <div class="test-result">-->
+<!--          <pre>{{ testResult }}</pre>-->
+<!--        </div>-->
+<!--      </div>-->
     </div>
     <el-empty v-else description="请选择或创建一个接口开始 Mock" />
   </el-main>
