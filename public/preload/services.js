@@ -211,6 +211,24 @@ function checkPort(port) {
   });
 }
 
+// 模板管理操作
+const DB_TEMPLATE_KEY = 'mock_templates_v1';
+
+// --- 模板数据操作 ---
+function getTemplates() {
+  const doc = utools.db.get(DB_TEMPLATE_KEY);
+  return doc ? doc.data : [];
+}
+
+function saveTemplates(templates) {
+  const doc = utools.db.get(DB_TEMPLATE_KEY);
+  if (doc) {
+    utools.db.put({ _id: DB_TEMPLATE_KEY, data: templates, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: DB_TEMPLATE_KEY, data: templates });
+  }
+}
+
 // Admin Server 保持不变
 const adminApp = express();
 adminApp.use(cors());
@@ -227,6 +245,45 @@ adminApp.get('/_admin/service/status', (req, res) => {
   const status = {};
   for (const [gid, info] of runningServices) status[gid] = { running: true, port: info.port, prefix: info.prefix };
   res.json(status);
+});
+// 获取所有模板
+adminApp.get('/_admin/templates', (req, res) => {
+  res.json(getTemplates());
+});
+// 2. 保存/更新单个模板
+adminApp.post('/_admin/template/save', (req, res) => {
+  const newTemplate = req.body;
+  if (!newTemplate.name || !newTemplate.content) {
+    return res.status(400).json({ error: 'Name and content are required' });
+  }
+
+  const templates = getTemplates();
+  // 如果有 ID 则更新，否则新增
+  const idx = templates.findIndex(t => t.id === newTemplate.id);
+  if (idx !== -1) {
+    // 编辑模式：保留原创建时间，更新其他字段
+    templates[idx] = {
+      ...templates[idx],
+      ...newTemplate,
+      id: templates[idx].id // 确保 ID 不变
+      };
+  } else {
+    // 新增模式
+    templates.push({
+      ...newTemplate,
+      id: Date.now(),
+      createdAt: Date.now()
+    });
+  }
+  saveTemplates(templates);
+  res.json({ success: true, data: templates });
+});
+// 3. 删除模板
+adminApp.post('/_admin/template/delete', (req, res) => {
+  const { id } = req.body;
+  const templates = getTemplates().filter(t => t.id !== id);
+  saveTemplates(templates);
+  res.json({ success: true, data: templates });
 });
 
 const server = adminApp.listen(ADMIN_PORT, '0.0.0.0', () => {

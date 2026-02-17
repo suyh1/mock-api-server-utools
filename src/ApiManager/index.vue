@@ -3,6 +3,7 @@ import { ref, computed, provide } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ApiPanel from './components/Api/ApiPanel.vue';
+import TemplateManager from './components/Template/TemplateManager.vue'; // 引入新组件
 
 const activeTab = ref('api');
 const isDark = ref(false);
@@ -59,8 +60,8 @@ const currentTitle = computed(() => {
         <div class="content-card">
           <ApiPanel v-if="activeTab === 'api'" />
 
-          <div v-if="activeTab === 'template'" class="placeholder-module">
-            <el-empty description="模板功能开发中..." />
+          <div v-if="activeTab === 'template'" class="full-height-module">
+            <TemplateManager />
           </div>
 
           <div v-if="activeTab === 'settings'" class="placeholder-module">
@@ -203,5 +204,10 @@ const currentTitle = computed(() => {
 .about-content {
   text-align: center;
   color: var(--text-secondary);
+}
+
+.full-height-module {
+  height: 100%;
+  overflow: hidden;
 }
 </style>

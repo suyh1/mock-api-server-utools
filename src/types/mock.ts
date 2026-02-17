@@ -49,3 +49,13 @@ export interface MockGroup {
     children: MockRule[];
     config?: ServiceConfig; // 分组的服务配置
 }
+
+// 【新增】模板数据结构
+export interface MockTemplate {
+    id: number;
+    name: string;
+    mode: ResponseMode;      // 模板类型：基础 or 高级
+    contentType?: string;    // 仅基础模式需要 (Content-Type)
+    content: string;         // 模板内容 (代码字符串)
+    createdAt: number;
+}

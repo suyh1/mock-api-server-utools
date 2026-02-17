@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue';
-import { Check, VideoPlay, CopyDocument, Plus, Delete, Document } from '@element-plus/icons-vue';
-import type { MockRule, KeyValueItem } from '@/types/mock';
+import { computed, inject, ref, watch, onMounted } from 'vue';
+import { Check, VideoPlay, CopyDocument, Plus, Delete, Document, ArrowDown } from '@element-plus/icons-vue';
+import type { MockRule, KeyValueItem, MockTemplate } from '@/types/mock';
 import CodeEditor from '@/ApiManager/components/CodeEditor.vue'; // 引入 CodeMirror 封装组件
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const props = defineProps<{
   modelValue: Partial<MockRule>;
@@ -110,6 +111,70 @@ const contentTypes = [
   { label: 'text/html', value: 'text/html' },
   { label: 'application/xml', value: 'application/xml' },
 ];
+
+// --- 模板相关逻辑 ---
+const templateList = ref<MockTemplate[]>([]);
+const API_BASE = 'http://localhost:3000';
+
+const loadTemplates = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/_admin/templates`);
+    templateList.value = await res.json();
+  } catch (e) { console.error('Load templates failed', e); }
+};
+
+// 过滤当前模式下的可用模板
+const availableTemplates = computed(() => {
+  return templateList.value.filter(t => t.mode === rule.value.responseMode);
+});
+
+// 保存为模板
+const handleSaveAsTemplate = () => {
+  ElMessageBox.prompt('请输入模板名称', '存为模板', {
+    confirmButtonText: '保存',
+    cancelButtonText: '取消',
+    inputPattern: /\S+/,
+    inputErrorMessage: '名称不能为空'
+  }).then(async ({ value }: any) => {
+    const content = rule.value.responseMode === 'basic'
+        ? rule.value.responseBasic
+        : rule.value.responseAdvanced;
+
+    const newTemplate: Partial<MockTemplate> = {
+      name: value,
+      mode: rule.value.responseMode,
+      content: content || '',
+      contentType: rule.value.responseType
+    };
+
+    try {
+      await fetch(`${API_BASE}/_admin/template/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTemplate)
+      });
+      ElMessage.success('模板保存成功');
+      loadTemplates(); // 刷新列表
+    } catch (e) {
+      ElMessage.error('保存失败');
+    }
+  }).catch(() => {});
+};
+
+// 应用模板
+const applyTemplate = (tpl: MockTemplate) => {
+  if (tpl.mode === 'basic') {
+    rule.value.responseBasic = tpl.content;
+    if (tpl.contentType) rule.value.responseType = tpl.contentType;
+  } else {
+    rule.value.responseAdvanced = tpl.content;
+  }
+  ElMessage.success(`已应用模板: ${tpl.name}`);
+};
+
+onMounted(() => {
+  loadTemplates(); // 加载模板
+}); // 加载模板
 </script>
 
 <template>
@@ -229,6 +294,24 @@ const contentTypes = [
               </el-select>
             </div>
 
+            <div class="template-actions">
+              <el-dropdown @command="applyTemplate" trigger="click" :disabled="!availableTemplates.length">
+                <el-button type="primary" plain>
+                  应用模板<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-for="t in availableTemplates" :key="t.id" :command="t">
+                      {{ t.name }}
+                    </el-dropdown-item>
+                    <el-dropdown-item v-if="!availableTemplates.length" disabled>暂无该模式模板</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
+              <el-button type="warning" plain @click="handleSaveAsTemplate">存为模板</el-button>
+            </div>
+
             <el-button type="success" :icon="Check" @click="$emit('save')" style="margin-left: auto">保存配置</el-button>
           </div>
 
@@ -326,4 +409,6 @@ const contentTypes = [
 .test-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .panel-header { padding: 10px 16px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); flex-shrink: 0; }
 .test-result { flex: 1; overflow: hidden; padding: 0; border: none; }
+
+.template-actions { display: flex; gap: 10px; margin-left: 20px; border-left: 1px solid var(--border-color); padding-left: 20px; }
 </style>
