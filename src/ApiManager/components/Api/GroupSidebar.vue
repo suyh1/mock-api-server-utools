@@ -1,14 +1,40 @@
+/**
+ * @file GroupSidebar.vue
+ * @description 接口分组侧边栏组件
+ *
+ * 功能说明：
+ * - 展示分组列表（可折叠手风琴），每个分组下包含接口列表
+ * - 分组操作：新增分组、重命名、删除、服务配置
+ * - 接口操作：新增接口、选中、删除、启用/禁用开关
+ * - 接口按 HTTP 方法（GET/POST/PUT/DELETE）显示不同颜色标签
+ */
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { Plus, Edit, Delete, Setting } from '@element-plus/icons-vue';
 import type { MockGroup, MockRule } from '@/types/mock';
 import { TagType } from "@/types/groupSideBar";
 
+/**
+ * 组件属性
+ * @property {MockGroup[]} groups - 分组数据列表，包含分组信息及其下属接口
+ * @property {number | null} currentRuleId - 当前选中的接口 ID，用于高亮显示
+ */
 const props = defineProps<{
   groups: MockGroup[];
   currentRuleId: number | null;
 }>();
 
+/**
+ * 组件事件
+ * @event group-add - 新增分组
+ * @event group-rename - 重命名分组，携带目标分组对象
+ * @event group-delete - 删除分组，携带分组索引
+ * @event group-config - 打开分组的服务配置，携带目标分组对象
+ * @event rule-add - 在指定分组下新增接口，携带目标分组对象
+ * @event rule-select - 选中某个接口，携带目标接口对象
+ * @event rule-delete - 删除接口，携带所属分组和目标接口对象
+ * @event rule-toggle - 切换接口的启用/禁用状态
+ */
 const emit = defineEmits<{
   (e: 'group-add'): void;
   (e: 'group-rename', group: MockGroup): void;
@@ -20,14 +46,24 @@ const emit = defineEmits<{
   (e: 'rule-toggle'): void;
 }>();
 
+/** 当前展开的分组 ID 列表，用于控制手风琴折叠状态 */
 const activeGroupNames = ref<number[]>([]);
 
+/**
+ * 监听分组数据变化
+ * 当分组数据首次加载时，默认展开所有分组
+ */
 watch(() => props.groups, (newVal) => {
   if (newVal && activeGroupNames.value.length === 0) {
     activeGroupNames.value = newVal.map(g => g.id);
   }
 }, { immediate: true });
 
+/**
+ * 根据 HTTP 方法返回对应的标签颜色类型
+ * @param {string} method - HTTP 方法名（GET/POST/PUT/DELETE）
+ * @returns {TagType} Element Plus 标签颜色类型
+ */
 const methodTagType = (method: string) => {
   const map: Record<string, TagType> = {
     GET: 'primary',
@@ -40,18 +76,24 @@ const methodTagType = (method: string) => {
 </script>
 
 <template>
+  <!-- 侧边栏容器 -->
   <el-aside width="300px" class="inner-sidebar">
+    <!-- 顶部标题栏：标题 + 新建分组按钮 -->
     <div class="inner-header">
       <span class="title">Mock 接口列表</span>
       <el-button type="primary" size="small" :icon="Plus" circle @click="$emit('group-add')" title="新建分组" />
     </div>
+    <!-- 可滚动的分组列表区域 -->
     <el-scrollbar>
       <div class="group-wrapper">
+        <!-- 手风琴折叠面板，每个面板对应一个分组 -->
         <el-collapse v-model="activeGroupNames">
           <el-collapse-item v-for="(group, idx) in groups" :key="group.id" :name="group.id">
+            <!-- 分组标题栏：分组名称 + 操作按钮组 -->
             <template #title>
               <div class="group-title-content">
                 <span class="group-name">{{ group.name }}</span>
+                <!-- 分组操作按钮：服务配置、新增接口、重命名、删除 -->
                 <div class="group-btns">
                   <el-button link type="info" @click.stop="$emit('group-config', group)" title="服务配置">
                     <el-icon><Setting /></el-icon>
@@ -69,6 +111,7 @@ const methodTagType = (method: string) => {
               </div>
             </template>
 
+            <!-- 接口列表：遍历分组下的所有接口规则 -->
             <div
                 v-for="rule in group.children"
                 :key="rule.id"
@@ -76,11 +119,13 @@ const methodTagType = (method: string) => {
                 :class="{ active: currentRuleId === rule.id }"
                 @click="$emit('rule-select', rule)"
             >
+              <!-- 接口左侧：HTTP 方法标签 + 接口路径 -->
               <div class="rule-left">
                 <el-tag size="small" :type="methodTagType(rule.method)" effect="dark" class="method-tag">{{ rule.method }}</el-tag>
                 <span class="rule-url" :title="rule.url">{{ rule.url }}</span>
               </div>
 
+              <!-- 接口右侧操作区：删除按钮 + 启用/禁用开关 -->
               <div class="rule-actions">
                 <el-button
                     link
@@ -101,6 +146,7 @@ const methodTagType = (method: string) => {
                 />
               </div>
             </div>
+            <!-- 空状态提示 -->
             <div v-if="!group.children.length" class="empty-tip">暂无接口</div>
           </el-collapse-item>
         </el-collapse>

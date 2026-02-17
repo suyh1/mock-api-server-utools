@@ -1,29 +1,68 @@
+/**
+ * @file ServiceConfig.vue
+ * @description 服务配置面板组件
+ *
+ * 功能说明：
+ * - 配置 Mock 服务的端口、接口前缀
+ * - 启动/停止 Mock 服务，并同步服务运行状态
+ * - 端口可用性检测
+ * - 配置真实接口地址（协议、主机、端口、前缀）用于代理调试
+ * - 实时预览真实接口的完整 URL
+ */
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue';
 import { VideoPlay, SwitchButton, CircleCheck, Warning } from '@element-plus/icons-vue';
 import type { MockGroup, ServiceConfig } from '@/types/mock';
 import { ElMessage } from 'element-plus';
 
+/**
+ * 组件属性
+ * @property {MockGroup} group - 当前分组对象，包含分组配置信息
+ */
 const props = defineProps<{
   group: MockGroup;
 }>();
 
+/**
+ * 组件事件
+ * @event update:group - 更新分组数据（支持 v-model:group），携带更新后的分组对象
+ * @event save - 通知父组件持久化保存数据
+ */
 const emit = defineEmits<{
   (e: 'update:group', group: MockGroup): void;
   (e: 'save'): void;
 }>();
 
+/** 本机 IP 地址，用于拼接服务访问链接 */
 const localIp = ref('localhost');
+
+/** 管理后台 API 基础地址，用于与后端服务通信 */
 const ADMIN_API = ref('http://localhost:3000/_admin/service');
 
+/**
+ * 表单数据，包含 Mock 服务配置和真实接口地址配置
+ * @property {number} port - Mock 服务端口
+ * @property {string} prefix - Mock 接口前缀
+ * @property {boolean} running - 服务是否正在运行
+ * @property {string} [realProtocol] - 真实接口协议（http/https）
+ * @property {string} [realHost] - 真实接口主机地址
+ * @property {string} [realPort] - 真实接口端口
+ * @property {string} [realPrefix] - 真实接口前缀
+ */
 const formData = ref<ServiceConfig>({
   port: 3000,
   prefix: '',
   running: false
 });
 
+/** 计算属性：服务是否正在运行 */
 const isRunning = computed(() => formData.value.running);
 
+/**
+ * 计算属性：真实接口地址预览
+ * 根据协议、主机、端口、前缀拼接完整的 URL 供用户预览
+ * @returns {string} 拼接后的完整 URL 或 '未配置'
+ */
 // 真实地址预览
 const realUrlPreview = computed(() => {
   const { realProtocol, realHost, realPort, realPrefix } = formData.value;
@@ -34,6 +73,10 @@ const realUrlPreview = computed(() => {
   return url + '/...';
 });
 
+/**
+ * 组件挂载时初始化
+ * 获取本机 IP 和管理 API 地址，然后同步服务状态
+ */
 onMounted(async () => {
   if (window.services) {
     localIp.value = window.services.getLocalIP();
@@ -45,6 +88,10 @@ onMounted(async () => {
 });
 
 // 初始化数据
+/**
+ * 监听分组属性变化
+ * 当切换分组时，用分组配置初始化表单数据并同步服务运行状态
+ */
 watch(() => props.group, async (newGroup) => {
   if (newGroup) {
     formData.value = {
@@ -60,7 +107,11 @@ watch(() => props.group, async (newGroup) => {
   }
 }, { immediate: true });
 
-// 【修复】同步状态逻辑
+/**
+ * 同步服务运行状态
+ * 从管理后台获取所有服务的运行状态，匹配当前分组并更新表单
+ * 【修复】同步状态逻辑
+ */
 const syncStatus = async () => {
   try {
     const res = await fetch(`${ADMIN_API.value}/status`);
@@ -80,6 +131,10 @@ const syncStatus = async () => {
   }
 };
 
+/**
+ * 保存配置到本地
+ * 将当前表单数据合并到分组对象中，通过事件通知父组件更新和持久化
+ */
 const saveToLocal = () => {
   const updatedGroup = {
     ...props.group,
@@ -89,6 +144,10 @@ const saveToLocal = () => {
   emit('save');
 };
 
+/**
+ * 检测端口是否可用
+ * 向管理后台发送检测请求，提示用户端口占用情况
+ */
 const handleCheckPort = async () => {
   try {
     const res = await fetch(`${ADMIN_API.value}/check`, {
@@ -102,6 +161,11 @@ const handleCheckPort = async () => {
   } catch (e) { ElMessage.error('检测失败'); }
 };
 
+/**
+ * 启动 Mock 服务
+ * 启动前先保存配置，然后向管理后台发送启动请求
+ * 启动成功后更新运行状态并再次保存
+ */
 const handleStart = async () => {
   // 【新增】启动前先保存配置，确保其他组件（如GroupSidebar）能拿到最新端口
   saveToLocal();
@@ -132,6 +196,10 @@ const handleStart = async () => {
   }
 };
 
+/**
+ * 停止 Mock 服务
+ * 向管理后台发送停止请求，更新运行状态并保存
+ */
 const handleStop = async () => {
   try {
     await fetch(`${ADMIN_API.value}/stop`, {
@@ -147,12 +215,16 @@ const handleStop = async () => {
 </script>
 
 <template>
+  <!-- 服务配置主容器 -->
   <el-main class="config-container">
+    <!-- Mock 服务配置区域标题 -->
     <div class="config-header">
       <span class="title">服务配置</span>
     </div>
 
+    <!-- Mock 服务配置表单卡片 -->
     <div class="config-card">
+      <!-- 服务运行状态指示 -->
       <div class="form-row">
         <label>服务状态</label>
         <div class="status-tag" :class="{ running: isRunning }">
@@ -162,6 +234,7 @@ const handleStop = async () => {
         </div>
       </div>
 
+      <!-- 接口前缀配置 -->
       <div class="form-row">
         <label>接口前缀</label>
         <el-input
@@ -172,6 +245,7 @@ const handleStop = async () => {
         />
       </div>
 
+      <!-- 服务端口配置 + 端口检测 -->
       <div class="form-row">
         <label>服务端口</label>
         <div class="port-group">
@@ -187,6 +261,7 @@ const handleStop = async () => {
         </div>
       </div>
 
+      <!-- 操作提示信息 -->
       <div class="warning-box">
         <el-icon class="warn-icon"><Warning /></el-icon>
         <div class="warn-content">
@@ -194,6 +269,7 @@ const handleStop = async () => {
         </div>
       </div>
 
+      <!-- 启动/停止服务按钮 -->
       <div class="footer-actions">
         <el-button
             v-if="!isRunning"
@@ -223,7 +299,9 @@ const handleStop = async () => {
     <div class="config-header" style="margin-top: 12px">
       <span class="title">真实接口地址</span>
     </div>
+    <!-- 真实接口地址配置表单卡片 -->
     <div class="config-card">
+      <!-- 协议选择：HTTP / HTTPS -->
       <div class="form-row">
         <label>协议</label>
         <el-radio-group v-model="formData.realProtocol" @change="saveToLocal">
@@ -232,6 +310,7 @@ const handleStop = async () => {
         </el-radio-group>
       </div>
 
+      <!-- 主机地址输入 -->
       <div class="form-row">
         <label>主机地址</label>
         <el-input
@@ -241,6 +320,7 @@ const handleStop = async () => {
         />
       </div>
 
+      <!-- 端口输入 -->
       <div class="form-row">
         <label>端口</label>
         <el-input
@@ -251,6 +331,7 @@ const handleStop = async () => {
         />
       </div>
 
+      <!-- 接口前缀输入 -->
       <div class="form-row">
         <label>接口前缀</label>
         <el-input
@@ -260,6 +341,7 @@ const handleStop = async () => {
         />
       </div>
 
+      <!-- 真实接口地址预览 -->
       <div class="warning-box" style="background-color: #f0f9eb">
         <el-icon class="warn-icon" style="color: #67C23A"><CircleCheck /></el-icon>
         <div class="warn-content" style="color: #67C23A">

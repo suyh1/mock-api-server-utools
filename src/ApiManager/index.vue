@@ -1,3 +1,16 @@
+/**
+ * ApiManager/index - 应用根布局组件
+ *
+ * 整体页面结构：
+ * - 左侧 ActivityBar 导航栏（切换功能面板）
+ * - 右侧主区域：顶部 Header（页面标题 + 主题切换按钮）+ 主内容区
+ * - 主内容区根据 activeTab 条件渲染不同面板（接口管理 / 数据模板 / 开发工具 / 设置 / 关于）
+ *
+ * 职责：
+ * - 定义全局 CSS 变量（浅色 / 深色主题配色）
+ * - 通过 provide 向所有子组件注入 isDark 响应式状态
+ * - 管理深色模式切换逻辑（同步 document.documentElement 的 class）
+ */
 <script setup lang="ts">
 import { ref, computed, provide } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
@@ -6,11 +19,19 @@ import ApiPanel from './components/Api/ApiPanel.vue';
 import TemplateManager from './components/Template/TemplateManager.vue'; // 引入新组件
 import ToolsPanel from './components/Tools/ToolsPanel.vue';
 
+/** 当前激活的导航标签页，默认为 'api'（接口管理） */
 const activeTab = ref('api');
+
+/** 深色模式开关 */
 const isDark = ref(false);
 // 【关键】向下层组件提供 isDark 状态
 provide('isDark', isDark);
 
+/**
+ * 切换深色/浅色主题
+ * 同时更新 isDark 状态和 document.documentElement 的 class，
+ * 以便全局 CSS（如 Element Plus 暗黑模式）能正确响应
+ */
 const toggleTheme = () => {
   isDark.value = !isDark.value;
   const html = document.documentElement;
@@ -21,6 +42,7 @@ const toggleTheme = () => {
   }
 };
 
+/** 根据当前激活标签页计算页面标题文本 */
 const currentTitle = computed(() => {
   const map: Record<string, string> = {
     api: '接口管理',
@@ -34,12 +56,16 @@ const currentTitle = computed(() => {
 </script>
 
 <template>
+  <!-- 应用最外层框架，通过 dark 类名切换深色/浅色 CSS 变量 -->
   <div class="app-frame" :class="{ dark: isDark }">
 
+    <!-- 左侧导航栏 -->
     <ActivityBar v-model="activeTab" />
 
+    <!-- 右侧主区域（Header + 内容） -->
     <div class="main-layout">
 
+      <!-- 顶部 Header：左侧标题 + 右侧主题切换按钮 -->
       <header class="app-header">
         <div class="header-left">
           <div class="avatar-container">
@@ -48,6 +74,7 @@ const currentTitle = computed(() => {
           <span class="page-title">{{ currentTitle }}</span>
         </div>
 
+        <!-- 主题切换按钮：深色显示月亮图标，浅色显示太阳图标 -->
         <div class="header-right">
           <button class="icon-btn" @click="toggleTheme" title="切换模式">
             <el-icon :size="18">
@@ -58,22 +85,28 @@ const currentTitle = computed(() => {
         </div>
       </header>
 
+      <!-- 主内容区：根据 activeTab 条件渲染对应面板 -->
       <main class="content-wrapper">
         <div class="content-card">
+          <!-- 接口管理面板 -->
           <ApiPanel v-if="activeTab === 'api'" />
 
+          <!-- 数据模板管理面板 -->
           <div v-if="activeTab === 'template'" class="full-height-module">
             <TemplateManager />
           </div>
 
+          <!-- 开发工具面板 -->
           <div v-if="activeTab === 'tools'" class="full-height-module">
             <ToolsPanel />
           </div>
 
+          <!-- 全局设置（占位） -->
           <div v-if="activeTab === 'settings'" class="placeholder-module">
             <el-empty description="全局设置" />
           </div>
 
+          <!-- 关于软件 -->
           <div v-if="activeTab === 'about'" class="placeholder-module">
             <div class="about-content">
               <h2>Mock API Server</h2>

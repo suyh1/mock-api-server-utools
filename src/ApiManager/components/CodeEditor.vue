@@ -1,3 +1,13 @@
+/**
+ * CodeEditor - 代码编辑器组件
+ *
+ * 基于 vue-codemirror 封装的通用代码编辑器，提供以下能力：
+ * - 支持 JSON / JavaScript / TypeScript 语言高亮
+ * - 深色模式（One Dark 主题）与浅色模式自动切换
+ * - 只读模式
+ * - JSON 语法实时校验（lint 红线提示）
+ * - 通过 v-model 双向绑定代码内容
+ */
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Codemirror } from 'vue-codemirror';
@@ -15,9 +25,19 @@ const props = defineProps<{
   readonly?: boolean;      // 是否只读
 }>();
 
+/**
+ * 组件事件
+ * @event update:modelValue - 代码内容变更时触发，用于 v-model 双向绑定
+ * @event change            - 代码内容变更时触发，供父组件监听
+ */
 const emit = defineEmits(['update:modelValue', 'change']);
 
-// 【核心修复】创建一个可写的计算属性代理
+/**
+ * 可写计算属性 - 作为 v-model 的代理
+ * get: 读取父组件传入的 modelValue
+ * set: 写入时同时触发 update:modelValue 和 change 事件
+ * 【核心修复】避免直接修改 props，通过计算属性代理实现双向绑定
+ */
 const code = computed({
   get: () => props.modelValue,
   set: (val: string) => {
@@ -26,7 +46,14 @@ const code = computed({
   }
 });
 
-// 动态计算扩展插件
+/**
+ * 动态计算 CodeMirror 扩展插件列表
+ * 根据 props 的变化自动重新计算，包含：
+ * - 基础功能（lint 提示槽、编辑器高度撑满）
+ * - 语言支持与语法检查（JSON / JS / TS）
+ * - 主题切换（深色 One Dark / 浅色自定义）
+ * - 只读模式控制
+ */
 const extensions = computed(() => {
   const exts = [
     // 基础功能：错误提示槽
@@ -71,7 +98,9 @@ const extensions = computed(() => {
 </script>
 
 <template>
+  <!-- 编辑器外层容器，通过 dark 类名切换深色/浅色样式 -->
   <div class="code-editor-wrapper" :class="{ dark: isDark }">
+    <!-- CodeMirror 编辑器实例，通过 v-model 绑定代码内容，extensions 控制语言/主题/只读等行为 -->
     <codemirror
         v-model="code"
         :style="{ height: '100%' }"
