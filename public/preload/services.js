@@ -84,7 +84,8 @@ function startGroupServer(rawGroupId, port, prefix) {
     app.use(cors());
     app.use(bodyParser.json());
     app.use(bodyParser.urlencoded({ extended: true }));
-    app.use(bodyParser.text({ type: ['text/*', 'application/xml'] }));
+    app.use(bodyParser.text({ type: ['text/*', 'application/xml', 'application/javascript'] }));
+    app.use(bodyParser.raw({ type: ['application/pdf', 'application/zip', 'application/octet-stream', 'video/*'] }));
 
     app.get('/', (req, res) => res.send(`Mock Service Group ${groupId} running on port ${port}`));
 
@@ -164,12 +165,33 @@ function startGroupServer(rawGroupId, port, prefix) {
             // --- 基础模式 ---
             const contentType = matchedRule.responseType || 'application/json';
             res.setHeader('Content-Type', contentType);
-            const bodyStr = matchedRule.responseBasic || '{}';
 
-            if (contentType.includes('json')) {
-              res.status(200).send(bodyStr); // JSON string
+            // 文件类型：直接读取本地文件返回
+            const binaryTypes = [
+              'application/pdf', 'application/zip',
+              'application/octet-stream', 'video/mp4',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ];
+            if (binaryTypes.some(t => contentType.includes(t))) {
+              const filePath = matchedRule.responseFile;
+              if (!filePath) {
+                return res.status(400).json({ error: 'No file configured for this binary response type' });
+              }
+              try {
+                if (!fs.existsSync(filePath)) {
+                  return res.status(404).json({ error: 'Response file not found', path: filePath });
+                }
+                const fileBuffer = fs.readFileSync(filePath);
+                // 为下载类型设置文件名
+                const fileName = path.basename(filePath);
+                res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+                res.status(200).send(fileBuffer);
+              } catch (e) {
+                res.status(500).json({ error: 'Failed to read response file', message: e.message });
+              }
             } else {
-              res.status(200).send(bodyStr); // Text/XML/HTML
+              const bodyStr = matchedRule.responseBasic || '{}';
+              res.status(200).send(bodyStr);
             }
           }
 

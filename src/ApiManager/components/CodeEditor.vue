@@ -10,7 +10,7 @@ import { EditorView } from '@codemirror/view';
 // 接收 Props
 const props = defineProps<{
   modelValue: string;      // 代码内容
-  language?: 'json' | 'javascript'; // 语言类型
+  language?: 'json' | 'javascript' | 'typescript'; // 语言类型
   isDark?: boolean;        // 是否深色模式
   readonly?: boolean;      // 是否只读
 }>();
@@ -44,6 +44,8 @@ const extensions = computed(() => {
     exts.push(linter(jsonParseLinter())); // JSON 格式错误校验（红线提示）
   } else if (props.language === 'javascript') {
     exts.push(javascript());
+  } else if (props.language === 'typescript') {
+    exts.push(javascript({ typescript: true }));
   }
 
   // 2. 主题支持

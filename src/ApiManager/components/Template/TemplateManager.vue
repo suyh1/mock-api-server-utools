@@ -108,10 +108,19 @@ const handleModeChange = (val: string | number | boolean | undefined) => {
   }
 };
 const contentTypes = [
-  { label: 'application/json', value: 'application/json' },
-  { label: 'text/plain', value: 'text/plain' },
-  { label: 'text/html', value: 'text/html' },
-  { label: 'application/xml', value: 'application/xml' },
+  { label: 'application/json', value: 'application/json', group: '文本' },
+  { label: 'text/plain', value: 'text/plain', group: '文本' },
+  { label: 'text/html', value: 'text/html', group: '文本' },
+  { label: 'application/xml', value: 'application/xml', group: '文本' },
+  { label: 'application/javascript', value: 'application/javascript', group: '文本' },
+  { label: 'text/css', value: 'text/css', group: '文本' },
+  { label: 'text/csv', value: 'text/csv', group: '文本' },
+  { label: 'multipart/form-data', value: 'multipart/form-data', group: '其他' },
+  { label: 'application/pdf', value: 'application/pdf', group: '文件' },
+  { label: 'application/msword (Word)', value: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', group: '文件' },
+  { label: 'application/zip', value: 'application/zip', group: '文件' },
+  { label: 'application/octet-stream', value: 'application/octet-stream', group: '文件' },
+  { label: 'video/mp4', value: 'video/mp4', group: '文件' },
 ];
 
 const formatDate = (ts: number) => new Date(ts).toLocaleString();
@@ -185,9 +194,12 @@ onMounted(loadTemplates);
               v-if="editingForm.mode === 'basic'"
               v-model="editingForm.contentType"
               placeholder="类型"
-              style="width: 160px"
+              style="width: 220px"
+              filterable
           >
-            <el-option v-for="t in contentTypes" :key="t.value" :label="t.label" :value="t.value" />
+            <el-option-group v-for="group in ['文本', '文件', '其他']" :key="group" :label="group">
+              <el-option v-for="t in contentTypes.filter(c => c.group === group)" :key="t.value" :label="t.label" :value="t.value" />
+            </el-option-group>
           </el-select>
         </div>
 

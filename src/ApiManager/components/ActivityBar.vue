@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Connection, DocumentCopy, Setting, InfoFilled } from '@element-plus/icons-vue';
+import { Connection, DocumentCopy, Setting, InfoFilled, Briefcase } from '@element-plus/icons-vue';
 import type { Component } from 'vue';
 
 defineProps<{ modelValue: string }>();
@@ -10,6 +10,7 @@ interface NavItem { key: string; label: string; icon: Component; }
 const menuItems: NavItem[] = [
   { key: 'api', label: '接口', icon: Connection },
   { key: 'template', label: '模板', icon: DocumentCopy },
+  { key: 'tools', label: '工具', icon: Briefcase },
 ];
 const bottomItems: NavItem[] = [
   { key: 'settings', label: '设置', icon: Setting },

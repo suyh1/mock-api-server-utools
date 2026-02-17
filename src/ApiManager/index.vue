@@ -4,6 +4,7 @@ import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ApiPanel from './components/Api/ApiPanel.vue';
 import TemplateManager from './components/Template/TemplateManager.vue'; // 引入新组件
+import ToolsPanel from './components/Tools/ToolsPanel.vue';
 
 const activeTab = ref('api');
 const isDark = ref(false);
@@ -24,6 +25,7 @@ const currentTitle = computed(() => {
   const map: Record<string, string> = {
     api: '接口管理',
     template: '数据模板',
+    tools: '开发工具',
     settings: '全局设置',
     about: '关于软件'
   };
@@ -64,14 +66,23 @@ const currentTitle = computed(() => {
             <TemplateManager />
           </div>
 
+          <div v-if="activeTab === 'tools'" class="full-height-module">
+            <ToolsPanel />
+          </div>
+
           <div v-if="activeTab === 'settings'" class="placeholder-module">
             <el-empty description="全局设置" />
           </div>
 
           <div v-if="activeTab === 'about'" class="placeholder-module">
             <div class="about-content">
-              <h2>Local Mock Server</h2>
-              <p>v1.3.0 - Elegant UI</p>
+              <h2>Mock API Server</h2>
+              <p class="about-version">v1.4.0</p>
+              <p class="about-desc">一款集 Mock 服务与接口管理于一体的 uTools 插件。支持多分组管理、自定义响应数据、真实接口代理调试、数据模板复用，以及多种响应类型（JSON、文件等）。</p>
+              <div class="about-author">
+                <p>作者：suyuhao</p>
+                <p>邮箱：suyhem@163.com</p>
+              </div>
             </div>
           </div>
         </div>
@@ -205,6 +216,11 @@ const currentTitle = computed(() => {
   text-align: center;
   color: var(--text-secondary);
 }
+.about-content h2 { color: var(--text-primary); margin-bottom: 4px; }
+.about-version { font-size: 13px; margin-bottom: 16px; }
+.about-desc { font-size: 13px; line-height: 1.8; max-width: 360px; margin: 0 auto 20px; }
+.about-author { font-size: 13px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+.about-author p { margin: 4px 0; }
 
 .full-height-module {
   height: 100%;

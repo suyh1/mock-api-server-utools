@@ -24,6 +24,16 @@ const formData = ref<ServiceConfig>({
 
 const isRunning = computed(() => formData.value.running);
 
+// 真实地址预览
+const realUrlPreview = computed(() => {
+  const { realProtocol, realHost, realPort, realPrefix } = formData.value;
+  if (!realHost) return '未配置';
+  let url = `${realProtocol || 'http'}://${realHost}`;
+  if (realPort) url += `:${realPort}`;
+  if (realPrefix) url += realPrefix.startsWith('/') ? realPrefix : `/${realPrefix}`;
+  return url + '/...';
+});
+
 onMounted(async () => {
   if (window.services) {
     localIp.value = window.services.getLocalIP();
@@ -40,7 +50,11 @@ watch(() => props.group, async (newGroup) => {
     formData.value = {
       port: newGroup.config?.port || 3888, // 默认 3888
       prefix: newGroup.config?.prefix || '',
-      running: false
+      running: false,
+      realProtocol: newGroup.config?.realProtocol || 'http',
+      realHost: newGroup.config?.realHost || '',
+      realPort: newGroup.config?.realPort || '',
+      realPrefix: newGroup.config?.realPrefix || '',
     };
     await syncStatus();
   }
@@ -204,12 +218,61 @@ const handleStop = async () => {
         </el-button>
       </div>
     </div>
+
+    <!-- 真实接口地址配置 -->
+    <div class="config-header" style="margin-top: 12px">
+      <span class="title">真实接口地址</span>
+    </div>
+    <div class="config-card">
+      <div class="form-row">
+        <label>协议</label>
+        <el-radio-group v-model="formData.realProtocol" @change="saveToLocal">
+          <el-radio-button label="http">HTTP</el-radio-button>
+          <el-radio-button label="https">HTTPS</el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <div class="form-row">
+        <label>主机地址</label>
+        <el-input
+            v-model="formData.realHost"
+            placeholder="如 192.168.1.100 或 api.example.com"
+            @change="saveToLocal"
+        />
+      </div>
+
+      <div class="form-row">
+        <label>端口</label>
+        <el-input
+            v-model="formData.realPort"
+            placeholder="如 8080（留空则使用默认端口）"
+            style="width: 200px"
+            @change="saveToLocal"
+        />
+      </div>
+
+      <div class="form-row">
+        <label>接口前缀</label>
+        <el-input
+            v-model="formData.realPrefix"
+            placeholder="如 /api/v1"
+            @change="saveToLocal"
+        />
+      </div>
+
+      <div class="warning-box" style="background-color: #f0f9eb">
+        <el-icon class="warn-icon" style="color: #67C23A"><CircleCheck /></el-icon>
+        <div class="warn-content" style="color: #67C23A">
+          预览地址：{{ realUrlPreview }}
+        </div>
+      </div>
+    </div>
   </el-main>
 </template>
 
 <style scoped>
 /* 保持原有样式，此处省略 */
-.config-container { padding: 0; height: 100%; display: flex; flex-direction: column; }
+.config-container { padding: 0; height: 100%; display: flex; flex-direction: column; overflow-y: auto; }
 .config-header { padding: 20px 24px; border-bottom: 1px solid var(--border-color); font-size: 16px; font-weight: 600; color: #409EFF; }
 .config-card { padding: 40px; max-width: 600px; display: flex; flex-direction: column; gap: 24px; }
 .form-row { display: flex; align-items: center; }
