@@ -1,5 +1,6 @@
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 export type BodyType = 'none' | 'form-data' | 'x-www-form-urlencoded' | 'json' | 'text' | 'xml';
+export type ResponseMode = 'basic' | 'advanced'; // 新增响应模式
 
 export interface KeyValueItem {
     key: string;
@@ -27,7 +28,13 @@ export interface MockRule {
     params: KeyValueItem[];        // Query 参数校验
     body: BodyContent;             // 请求体定义
     responseHeaders: KeyValueItem[]; // 自定义响应头
-    response: string; // 响应体
+    // response: string; // 响应体
+
+    // --- 响应配置升级 ---
+    responseMode: ResponseMode;      // 模式：基础 | 高级
+    responseType: string;            // Content-Type (基础模式用)
+    responseBasic: string;           // 基础模式内容 (原 response)
+    responseAdvanced: string;        // 高级模式脚本
 }
 
 export interface ServiceConfig {

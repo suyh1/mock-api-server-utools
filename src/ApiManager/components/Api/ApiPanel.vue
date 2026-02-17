@@ -34,18 +34,24 @@ const handleAddRule = (group: MockGroup) => {
     active: true,
     method: 'GET',
     url: '/api/new',
-    response: '{\n  "code": 200,\n  "msg": "Hello World"\n}',
     delay: 0,
 
     // --- 新增：必须初始化这些字段 ---
     headers: [],        // 初始化为空数组
     params: [],         // 初始化为空数组
-    responseHeaders: [],// 初始化为空数组
     body: {             // 初始化默认 body 结构
       type: 'none',
       raw: '',
       formData: []
-    }
+    },
+
+    // 初始化响应配置
+    responseHeaders: [],
+    responseMode: 'basic',            // 默认基础模式
+    responseType: 'application/json', // 默认 JSON
+    responseBasic: '{\n  "code": 200,\n  "msg": "Hello World"\n}', // 默认内容
+    responseAdvanced: '',             // 高级模式脚本初始化为空字符串(Editor会处理模板)
+
   };
   group.children.push(newRule);
   handleSelectRule(newRule);

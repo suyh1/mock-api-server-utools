@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, provide } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ApiPanel from './components/Api/ApiPanel.vue';
 
 const activeTab = ref('api');
 const isDark = ref(false);
+// 【关键】向下层组件提供 isDark 状态
+provide('isDark', isDark);
 
 const toggleTheme = () => {
   isDark.value = !isDark.value;
