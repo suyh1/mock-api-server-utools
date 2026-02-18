@@ -1,49 +1,81 @@
-/**
- * @file ToolsPanel.vue - 开发工具集面板
- * @description 提供常用开发小工具的集合页面，包含 JSON 格式化、URL 编解码、
- *              Base64 编解码、时间戳转换、UUID 生成、正则测试、JSON → TS 转换等工具。
- *              左侧为工具菜单列表，右侧为对应工具的操作区域。
- */
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue';
-/** 引入代码编辑器组件，用于 JSON → TS 工具的代码编辑和高亮 */
 import CodeEditor from '../CodeEditor.vue';
 
-/** 注入深色模式状态，用于 CodeEditor 主题切换 */
 const isDark = inject('isDark', ref(false));
-
-/** 当前选中的工具标识，默认为 JSON 格式化 */
 const activeTool = ref('json');
 
-/**
- * 工具列表配置
- * @property {string} key - 工具唯一标识，用于条件渲染
- * @property {string} label - 工具显示名称
- * @property {string} icon - 工具图标文字
- */
-const tools = [
-  { key: 'json', label: 'JSON 格式化', icon: '{ }' },
-  { key: 'url', label: 'URL 编解码', icon: '%' },
-  { key: 'base64', label: 'Base64 编解码', icon: 'B64' },
-  { key: 'timestamp', label: '时间戳转换', icon: '⏱' },
-  { key: 'uuid', label: 'UUID 生成', icon: 'ID' },
-  { key: 'regex', label: '正则测试', icon: '.*' },
-  { key: 'json2ts', label: 'JSON → TS', icon: 'TS' },
+/* ==================== 工具分组配置 ==================== */
+
+const toolGroups = [
+  {
+    category: '格式化',
+    categoryEn: 'FORMAT',
+    tools: [
+      { key: 'json', label: 'JSON 格式化', icon: '{ }', desc: '格式化或压缩 JSON 字符串' },
+      { key: 'json2ts', label: 'JSON → TS', icon: 'TS', desc: '将 JSON 转换为 TypeScript Interface' },
+    ],
+  },
+  {
+    category: '编码转换',
+    categoryEn: 'ENCODE',
+    tools: [
+      { key: 'url', label: 'URL 编解码', icon: '%', desc: 'URL 编码与解码转换' },
+      { key: 'base64', label: 'Base64 编解码', icon: 'B64', desc: 'Base64 编码与解码转换' },
+      { key: 'htmlencode', label: 'HTML 实体', icon: '&;', desc: 'HTML 特殊字符实体编码与解码' },
+    ],
+  },
+  {
+    category: '数据工具',
+    categoryEn: 'DATA',
+    tools: [
+      { key: 'timestamp', label: '时间戳转换', icon: 'T', desc: '时间戳与日期字符串互转' },
+      { key: 'uuid', label: 'UUID 生成', icon: 'ID', desc: '批量生成 UUID v4' },
+      { key: 'color', label: '颜色转换', icon: 'Clr', desc: 'HEX / RGB / HSL 颜色互转' },
+      { key: 'radix', label: '进制转换', icon: '0x', desc: '二/八/十/十六进制互转' },
+      { key: 'hash', label: '哈希生成', icon: '#', desc: 'SHA-1 / SHA-256 / SHA-512 哈希' },
+      { key: 'password', label: '随机密码', icon: '***', desc: '可配置长度和字符类型的密码生成' },
+    ],
+  },
+  {
+    category: '文本工具',
+    categoryEn: 'TEXT',
+    tools: [
+      { key: 'regex', label: '正则测试', icon: '.*', desc: '正则表达式在线测试与匹配高亮' },
+      { key: 'diff', label: '文本对比', icon: 'Ab', desc: '基于 LCS 的逐行文本差异对比' },
+      { key: 'markdown', label: 'Markdown 预览', icon: 'Md', desc: '输入 Markdown 实时预览渲染结果' },
+      { key: 'textstat', label: '文本统计', icon: 'Aa', desc: '统计字符数、字数、行数、字节数' },
+    ],
+  },
+  {
+    category: '解析工具',
+    categoryEn: 'PARSE',
+    tools: [
+      { key: 'jwt', label: 'JWT 解析', icon: 'JWT', desc: '解码 JWT Token 的 Header 和 Payload' },
+      { key: 'cron', label: 'Cron 表达式', icon: '*/5', desc: '解析 Cron 为中文描述 + 执行时间' },
+    ],
+  },
 ];
+
+const allTools = computed(() => toolGroups.flatMap(g => g.tools));
+const currentTool = computed(() => allTools.value.find(t => t.key === activeTool.value));
+
+/* ==================== 通用工具函数 ==================== */
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function copyText(text: string) {
+  navigator.clipboard.writeText(text);
+}
 
 /* ==================== JSON 格式化工具 ==================== */
 
-/** JSON 输入文本 */
 const jsonInput = ref('');
-/** JSON 格式化/压缩后的输出文本 */
 const jsonOutput = ref('');
-/** JSON 解析错误信息 */
 const jsonError = ref('');
 
-/**
- * 格式化 JSON 字符串
- * @description 将输入的 JSON 字符串解析后以 2 空格缩进重新格式化输出
- */
 function formatJson() {
   try {
     jsonOutput.value = JSON.stringify(JSON.parse(jsonInput.value), null, 2);
@@ -51,10 +83,6 @@ function formatJson() {
   } catch (e: any) { jsonError.value = e.message; jsonOutput.value = ''; }
 }
 
-/**
- * 压缩 JSON 字符串
- * @description 将输入的 JSON 字符串解析后去除所有空白字符，输出单行紧凑格式
- */
 function compressJson() {
   try {
     jsonOutput.value = JSON.stringify(JSON.parse(jsonInput.value));
@@ -64,21 +92,10 @@ function compressJson() {
 
 /* ==================== URL 编解码工具 ==================== */
 
-/** URL 编解码输入文本 */
 const urlInput = ref('');
-/** URL 编解码输出文本 */
 const urlOutput = ref('');
 
-/**
- * URL 编码
- * @description 使用 encodeURIComponent 对输入文本进行 URL 编码
- */
 function urlEncode() { urlOutput.value = encodeURIComponent(urlInput.value); }
-
-/**
- * URL 解码
- * @description 使用 decodeURIComponent 对输入文本进行 URL 解码，解码失败时提示错误
- */
 function urlDecode() {
   try { urlOutput.value = decodeURIComponent(urlInput.value); }
   catch { urlOutput.value = '解码失败：输入不是有效的编码字符串'; }
@@ -86,24 +103,13 @@ function urlDecode() {
 
 /* ==================== Base64 编解码工具 ==================== */
 
-/** Base64 编解码输入文本 */
 const b64Input = ref('');
-/** Base64 编解码输出文本 */
 const b64Output = ref('');
 
-/**
- * Base64 编码
- * @description 先将 UTF-8 文本转为 Latin1 编码，再通过 btoa 转为 Base64 字符串
- */
 function b64Encode() {
   try { b64Output.value = btoa(unescape(encodeURIComponent(b64Input.value))); }
   catch { b64Output.value = '编码失败'; }
 }
-
-/**
- * Base64 解码
- * @description 先通过 atob 解码 Base64，再将 Latin1 编码还原为 UTF-8 文本
- */
 function b64Decode() {
   try { b64Output.value = decodeURIComponent(escape(atob(b64Input.value))); }
   catch { b64Output.value = '解码失败：输入不是有效的 Base64 字符串'; }
@@ -111,19 +117,11 @@ function b64Decode() {
 
 /* ==================== 时间戳转换工具 ==================== */
 
-/** 时间戳/日期输入文本 */
 const tsInput = ref('');
-/** 转换结果输出文本 */
 const tsOutput = ref('');
-/** 当前实时时间戳（秒级），每秒自动更新 */
 const nowTs = ref(Math.floor(Date.now() / 1000));
-/** 定时器：每秒刷新当前时间戳显示 */
 setInterval(() => { nowTs.value = Math.floor(Date.now() / 1000); }, 1000);
 
-/**
- * 时间戳转日期
- * @description 自动识别秒级（10位）和毫秒级（13位）时间戳，转换为中文格式日期字符串
- */
 function tsToDate() {
   const n = Number(tsInput.value);
   if (isNaN(n)) { tsOutput.value = '请输入有效数字'; return; }
@@ -131,10 +129,6 @@ function tsToDate() {
   tsOutput.value = new Date(ms).toLocaleString('zh-CN', { hour12: false });
 }
 
-/**
- * 日期转时间戳
- * @description 将日期字符串解析为 Date 对象，同时输出秒级和毫秒级时间戳
- */
 function dateToTs() {
   const d = new Date(tsInput.value);
   if (isNaN(d.getTime())) { tsOutput.value = '请输入有效日期，如 2024-01-01 12:00:00'; return; }
@@ -143,39 +137,21 @@ function dateToTs() {
 
 /* ==================== UUID 生成工具 ==================== */
 
-/** UUID 批量生成数量，默认 1 个 */
 const uuidCount = ref(1);
-/** UUID 生成结果，多个 UUID 以换行分隔 */
 const uuidOutput = ref('');
 
-/**
- * 批量生成 UUID v4
- * @description 使用 crypto.randomUUID() 生成指定数量的 UUID，每行一个
- */
 function generateUUID() {
   const results: string[] = [];
-  for (let i = 0; i < uuidCount.value; i++) {
-    results.push(crypto.randomUUID());
-  }
+  for (let i = 0; i < uuidCount.value; i++) results.push(crypto.randomUUID());
   uuidOutput.value = results.join('\n');
 }
 
 /* ==================== 正则测试工具 ==================== */
 
-/** 正则表达式模式字符串 */
 const regexPattern = ref('');
-/** 正则表达式标志位，默认全局匹配 */
 const regexFlags = ref('g');
-/** 正则测试的目标文本 */
 const regexTestStr = ref('');
 
-/**
- * 正则匹配结果列表（计算属性）
- * @description 根据输入的正则模式和标志位，对测试文本执行匹配，
- *              返回所有匹配项的起止位置和匹配文本。
- *              支持全局匹配（g 标志）和单次匹配两种模式。
- * @returns {{ start: number, end: number, text: string }[]} 匹配结果数组
- */
 const regexMatches = computed(() => {
   if (!regexPattern.value || !regexTestStr.value) return [];
   try {
@@ -183,14 +159,11 @@ const regexMatches = computed(() => {
     const matches: { start: number; end: number; text: string }[] = [];
     let m: RegExpExecArray | null;
     if (regexFlags.value.includes('g')) {
-      /** 全局匹配模式：循环执行 exec 直到无更多匹配 */
       while ((m = re.exec(regexTestStr.value)) !== null) {
         matches.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
-        /** 防止零长度匹配导致的无限循环 */
         if (!m[0].length) re.lastIndex++;
       }
     } else {
-      /** 单次匹配模式：只取第一个匹配结果 */
       m = re.exec(regexTestStr.value);
       if (m) matches.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
     }
@@ -198,12 +171,6 @@ const regexMatches = computed(() => {
   } catch { return []; }
 });
 
-/**
- * 正则匹配结果高亮 HTML（计算属性）
- * @description 将测试文本中的匹配部分用 <mark> 标签包裹，实现高亮显示。
- *              非匹配部分进行 HTML 转义以防止 XSS。
- * @returns {string} 包含高亮标记的 HTML 字符串
- */
 const regexHighlighted = computed(() => {
   if (!regexMatches.value.length) return escapeHtml(regexTestStr.value);
   let result = '';
@@ -217,38 +184,13 @@ const regexHighlighted = computed(() => {
   return result;
 });
 
-/**
- * HTML 特殊字符转义
- * @param {string} s - 需要转义的原始字符串
- * @returns {string} 转义后的安全字符串（& < > 被替换为对应实体）
- */
-function escapeHtml(s: string) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/**
- * 复制文本到剪贴板
- * @param {string} text - 要复制的文本内容
- */
-function copyText(text: string) {
-  navigator.clipboard.writeText(text);
-}
-
 /* ==================== JSON → TypeScript Interface 转换工具 ==================== */
 
-/** JSON → TS 的 JSON 输入文本 */
 const j2tsInput = ref('');
-/** JSON → TS 的 TypeScript Interface 输出文本 */
 const j2tsOutput = ref('');
-/** JSON → TS 的错误信息（JSON 解析失败时显示） */
 const j2tsError = ref('');
-/** 根 Interface 名称，默认为 'Root' */
 const j2tsRootName = ref('Root');
 
-/**
- * 执行 JSON → TypeScript Interface 转换
- * @description 解析输入的 JSON 字符串，递归生成对应的 TypeScript Interface 定义
- */
 function jsonToTs() {
   j2tsError.value = '';
   j2tsOutput.value = '';
@@ -260,20 +202,11 @@ function jsonToTs() {
   } catch (e: any) { j2tsError.value = e.message; }
 }
 
-/**
- * CodeEditor 内容变更回调
- * @description 当 JSON 编辑器内容变化时触发，更新输入值并尝试自动格式化
- * @param {string} val - 编辑器当前内容
- */
 function onJ2tsJsonChange(val: string) {
   j2tsInput.value = val;
   tryFormatJ2tsInput();
 }
 
-/**
- * 尝试自动格式化 JSON 输入
- * @description 解析 JSON 字符串并以 2 空格缩进重新格式化，解析失败时设置错误提示
- */
 function tryFormatJ2tsInput() {
   try {
     const parsed = JSON.parse(j2tsInput.value);
@@ -284,19 +217,9 @@ function tryFormatJ2tsInput() {
   }
 }
 
-/**
- * 递归生成 TypeScript Interface 定义
- * @description 遍历对象的所有属性，为每个嵌套对象生成独立的 Interface。
- *              数组类型取第一个元素作为类型推断依据。
- * @param {any} obj - 要转换的 JavaScript 对象
- * @param {string} name - 生成的 Interface 名称
- * @param {string[]} out - Interface 定义字符串的收集数组
- */
 function generateInterface(obj: any, name: string, out: string[]) {
   if (Array.isArray(obj)) {
-    if (obj.length > 0 && typeof obj[0] === 'object' && obj[0] !== null) {
-      generateInterface(obj[0], name, out);
-    }
+    if (obj.length > 0 && typeof obj[0] === 'object' && obj[0] !== null) generateInterface(obj[0], name, out);
     return;
   }
   if (typeof obj !== 'object' || obj === null) return;
@@ -308,240 +231,885 @@ function generateInterface(obj: any, name: string, out: string[]) {
   out.push(lines.join('\n'));
 }
 
-/**
- * 推断 JavaScript 值对应的 TypeScript 类型
- * @description 根据值的类型返回对应的 TS 类型字符串：
- *              - null/undefined → 'unknown'
- *              - 数组 → 递归推断元素类型并加 '[]'
- *              - 对象 → 生成子 Interface 并返回 Interface 名称
- *              - 基本类型 → 直接返回 typeof 结果
- * @param {any} val - 要推断类型的值
- * @param {string} hint - 类型名称提示（用于生成子 Interface 名称）
- * @param {string[]} out - Interface 定义字符串的收集数组
- * @returns {string} TypeScript 类型字符串
- */
 function inferType(val: any, hint: string, out: string[]): string {
   if (val === null || val === undefined) return 'unknown';
   if (Array.isArray(val)) {
     if (val.length === 0) return 'unknown[]';
-    const itemType = inferType(val[0], hint + 'Item', out);
-    return `${itemType}[]`;
+    return `${inferType(val[0], hint + 'Item', out)}[]`;
   }
-  if (typeof val === 'object') {
-    generateInterface(val, hint, out);
-    return hint;
-  }
+  if (typeof val === 'object') { generateInterface(val, hint, out); return hint; }
   return typeof val;
 }
 
-/**
- * 首字母大写
- * @param {string} s - 输入字符串
- * @returns {string} 首字母大写后的字符串，用于生成 Interface 名称
- */
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function capitalize(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/* ==================== 颜色转换工具 ==================== */
+
+const colorHex = ref('#409EFF');
+const colorR = ref(64);
+const colorG = ref(158);
+const colorB = ref(255);
+const colorH = ref(210);
+const colorS = ref(100);
+const colorL = ref(63);
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const m = hex.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return null;
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l: Math.round(l * 100) };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  h /= 360; s /= 100; l /= 100;
+  if (s === 0) { const v = Math.round(l * 255); return { r: v, g: v, b: v }; }
+  const hue2rgb = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return {
+    r: Math.round(hue2rgb(p, q, h + 1/3) * 255),
+    g: Math.round(hue2rgb(p, q, h) * 255),
+    b: Math.round(hue2rgb(p, q, h - 1/3) * 255),
+  };
+}
+
+const colorPreview = computed(() => colorHex.value);
+let colorSyncing = false;
+
+function onColorHexInput() {
+  if (colorSyncing) return;
+  colorSyncing = true;
+  const rgb = hexToRgb(colorHex.value);
+  if (rgb) {
+    colorR.value = rgb.r; colorG.value = rgb.g; colorB.value = rgb.b;
+    const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+    colorH.value = hsl.h; colorS.value = hsl.s; colorL.value = hsl.l;
+  }
+  colorSyncing = false;
+}
+
+function onColorRgbInput() {
+  if (colorSyncing) return;
+  colorSyncing = true;
+  colorHex.value = rgbToHex(colorR.value, colorG.value, colorB.value);
+  const hsl = rgbToHsl(colorR.value, colorG.value, colorB.value);
+  colorH.value = hsl.h; colorS.value = hsl.s; colorL.value = hsl.l;
+  colorSyncing = false;
+}
+
+function onColorHslInput() {
+  if (colorSyncing) return;
+  colorSyncing = true;
+  const rgb = hslToRgb(colorH.value, colorS.value, colorL.value);
+  colorR.value = rgb.r; colorG.value = rgb.g; colorB.value = rgb.b;
+  colorHex.value = rgbToHex(rgb.r, rgb.g, rgb.b);
+  colorSyncing = false;
+}
+
+/* ==================== JWT 解析工具 ==================== */
+
+const jwtInput = ref('');
+const jwtHeader = ref('');
+const jwtPayload = ref('');
+const jwtExpInfo = ref('');
+const jwtError = ref('');
+
+function decodeJwt() {
+  jwtHeader.value = ''; jwtPayload.value = ''; jwtExpInfo.value = ''; jwtError.value = '';
+  try {
+    const parts = jwtInput.value.trim().split('.');
+    if (parts.length < 2) { jwtError.value = '无效的 JWT 格式（至少需要 2 段）'; return; }
+    const decodeB64Url = (s: string) => {
+      let b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      return decodeURIComponent(escape(atob(b64)));
+    };
+    const header = JSON.parse(decodeB64Url(parts[0]));
+    jwtHeader.value = JSON.stringify(header, null, 2);
+    const payload = JSON.parse(decodeB64Url(parts[1]));
+    jwtPayload.value = JSON.stringify(payload, null, 2);
+    if (payload.exp) {
+      const expDate = new Date(payload.exp * 1000);
+      const expired = expDate.getTime() < Date.now();
+      jwtExpInfo.value = `过期时间：${expDate.toLocaleString('zh-CN', { hour12: false })}（${expired ? '已过期' : '未过期'}）`;
+    }
+  } catch (e: any) { jwtError.value = '解码失败：' + e.message; }
+}
+
+/* ==================== 哈希生成工具 ==================== */
+
+const hashInput = ref('');
+const hashAlgo = ref('SHA-256');
+const hashOutput = ref('');
+
+async function generateHash() {
+  if (!hashInput.value) { hashOutput.value = ''; return; }
+  const data = new TextEncoder().encode(hashInput.value);
+  const buffer = await crypto.subtle.digest(hashAlgo.value, data);
+  hashOutput.value = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* ==================== 进制转换工具 ==================== */
+
+const radixBin = ref('');
+const radixOct = ref('');
+const radixDec = ref('');
+const radixHexVal = ref('');
+const radixError = ref('');
+
+function onRadixInput(from: 'bin' | 'oct' | 'dec' | 'hex') {
+  radixError.value = '';
+  const baseMap = { bin: 2, oct: 8, dec: 10, hex: 16 } as const;
+  const valMap = { bin: radixBin, oct: radixOct, dec: radixDec, hex: radixHexVal } as const;
+  const input = valMap[from].value.trim();
+  if (!input) { radixBin.value = ''; radixOct.value = ''; radixDec.value = ''; radixHexVal.value = ''; return; }
+  const num = parseInt(input, baseMap[from]);
+  if (isNaN(num)) { radixError.value = '输入不是有效的数值'; return; }
+  if (from !== 'bin') radixBin.value = num.toString(2);
+  if (from !== 'oct') radixOct.value = num.toString(8);
+  if (from !== 'dec') radixDec.value = num.toString(10);
+  if (from !== 'hex') radixHexVal.value = num.toString(16).toUpperCase();
+}
+
+/* ==================== 文本对比工具 ==================== */
+
+const diffLeft = ref('');
+const diffRight = ref('');
+
+const diffResult = computed(() => {
+  const linesA = diffLeft.value.split('\n');
+  const linesB = diffRight.value.split('\n');
+  if (!diffLeft.value && !diffRight.value) return [];
+  const m = linesA.length, n = linesB.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = linesA[i - 1] === linesB[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  const result: { type: 'same' | 'del' | 'add'; text: string }[] = [];
+  let i = m, j = n;
+  const stack: typeof result = [];
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && linesA[i - 1] === linesB[j - 1]) { stack.push({ type: 'same', text: linesA[i - 1] }); i--; j--; }
+    else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) { stack.push({ type: 'add', text: linesB[j - 1] }); j--; }
+    else { stack.push({ type: 'del', text: linesA[i - 1] }); i--; }
+  }
+  while (stack.length) result.push(stack.pop()!);
+  return result;
+});
+
+/* ==================== HTML 实体编解码工具 ==================== */
+
+const htmlEncInput = ref('');
+const htmlEncOutput = ref('');
+
+function htmlEntityEncode() {
+  htmlEncOutput.value = htmlEncInput.value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function htmlEntityDecode() {
+  htmlEncOutput.value = htmlEncInput.value
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&#(\d+);/g, (_, num: string) => String.fromCharCode(parseInt(num)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&amp;/g, '&');
+}
+
+/* ==================== 文本统计工具 ==================== */
+
+const textStatInput = ref('');
+
+const textStats = computed(() => {
+  const text = textStatInput.value;
+  if (!text) return { chars: 0, words: 0, lines: 0, bytes: 0 };
+  const chars = text.length;
+  const lines = text.split('\n').length;
+  const bytes = new TextEncoder().encode(text).length;
+  const chineseChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+  const stripped = text.replace(/[\u4e00-\u9fff\u3400-\u4dbf]/g, ' ').trim();
+  const englishWords = stripped ? stripped.split(/\s+/).filter(w => w.length > 0).length : 0;
+  const words = chineseChars + englishWords;
+  return { chars, words, lines, bytes };
+});
+
+/* ==================== 随机密码生成工具 ==================== */
+
+const pwdLength = ref(16);
+const pwdUppercase = ref(true);
+const pwdLowercase = ref(true);
+const pwdDigits = ref(true);
+const pwdSpecial = ref(true);
+const pwdOutput = ref('');
+
+const pwdStrength = computed(() => {
+  const pwd = pwdOutput.value;
+  if (!pwd) return { level: 0, text: '', color: '' };
+  let score = 0;
+  if (pwd.length >= 8) score++;
+  if (pwd.length >= 12) score++;
+  if (pwd.length >= 16) score++;
+  if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++;
+  if (/\d/.test(pwd)) score++;
+  if (/[^a-zA-Z0-9]/.test(pwd)) score++;
+  if (score <= 2) return { level: 1, text: '弱', color: '#f56c6c' };
+  if (score <= 3) return { level: 2, text: '中等', color: '#e6a23c' };
+  if (score <= 4) return { level: 3, text: '强', color: '#409eff' };
+  return { level: 4, text: '很强', color: '#67c23a' };
+});
+
+function generatePassword() {
+  let chars = '';
+  if (pwdUppercase.value) chars += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  if (pwdLowercase.value) chars += 'abcdefghijklmnopqrstuvwxyz';
+  if (pwdDigits.value) chars += '0123456789';
+  if (pwdSpecial.value) chars += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+  if (!chars) { pwdOutput.value = ''; return; }
+  const arr = new Uint32Array(pwdLength.value);
+  crypto.getRandomValues(arr);
+  pwdOutput.value = Array.from(arr, v => chars[v % chars.length]).join('');
+}
+
+/* ==================== Markdown 预览工具 ==================== */
+
+const mdInput = ref('');
+
+function renderMarkdown(src: string): string {
+  const lines = src.split('\n');
+  let html = '';
+  let inCode = false;
+  let codeBuf = '';
+  let inUl = false;
+  let inOl = false;
+
+  function closeList() {
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+  }
+
+  function inlineRender(text: string): string {
+    let s = escapeHtml(text);
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    return s;
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inCode) {
+        html += `<pre><code>${escapeHtml(codeBuf.replace(/\n$/, ''))}</code></pre>`;
+        codeBuf = '';
+      } else {
+        closeList();
+      }
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) { codeBuf += line + '\n'; continue; }
+
+    const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (hMatch) {
+      closeList();
+      html += `<h${hMatch[1].length}>${inlineRender(hMatch[2])}</h${hMatch[1].length}>`;
+      continue;
+    }
+
+    const ulMatch = line.match(/^[-*]\s+(.*)$/);
+    if (ulMatch) {
+      if (inOl) { html += '</ol>'; inOl = false; }
+      if (!inUl) { html += '<ul>'; inUl = true; }
+      html += `<li>${inlineRender(ulMatch[1])}</li>`;
+      continue;
+    }
+
+    const olMatch = line.match(/^\d+\.\s+(.*)$/);
+    if (olMatch) {
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (!inOl) { html += '<ol>'; inOl = true; }
+      html += `<li>${inlineRender(olMatch[1])}</li>`;
+      continue;
+    }
+
+    closeList();
+    if (!line.trim()) continue;
+    html += `<p>${inlineRender(line)}</p>`;
+  }
+
+  closeList();
+  if (inCode) html += `<pre><code>${escapeHtml(codeBuf.replace(/\n$/, ''))}</code></pre>`;
+  return html;
+}
+
+const mdRendered = computed(() => mdInput.value ? renderMarkdown(mdInput.value) : '<p style="color:var(--text-secondary)">预览区域</p>');
+
+/* ==================== Cron 表达式工具 ==================== */
+
+const cronInput = ref('');
+const cronDesc = ref('');
+const cronNextTimes = ref<string[]>([]);
+const cronError = ref('');
+
+function parseCron() {
+  cronDesc.value = ''; cronNextTimes.value = []; cronError.value = '';
+  const expr = cronInput.value.trim();
+  if (!expr) return;
+  const parts = expr.split(/\s+/);
+  if (parts.length !== 5) { cronError.value = 'Cron 表达式需要 5 个字段：分 时 日 月 周'; return; }
+  const [min, hour, dom, mon, dow] = parts;
+
+  try { cronDesc.value = describeCron(min, hour, dom, mon, dow); }
+  catch (e: any) { cronError.value = '无法解析：' + e.message; return; }
+
+  try { cronNextTimes.value = getNextCronTimes(parts, 5); }
+  catch { /* 计算失败则只显示描述 */ }
+}
+
+function describeCron(min: string, hour: string, dom: string, mon: string, dow: string): string {
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && mon === '*' && dow === '*')
+    return `每隔 ${min.slice(2)} 分钟执行`;
+  if (min === '0' && hour.startsWith('*/') && dom === '*' && mon === '*' && dow === '*')
+    return `每隔 ${hour.slice(2)} 小时执行`;
+  if (min === '0' && hour === '0' && dom === '*' && mon === '*' && dow === '*')
+    return '每天 00:00 执行';
+  if (min === '0' && hour === '*' && dom === '*' && mon === '*' && dow === '*')
+    return '每小时整点执行';
+  if (min === '*' && hour === '*' && dom === '*' && mon === '*' && dow === '*')
+    return '每分钟执行';
+
+  const dowNames: Record<string, string> = { '0':'日','1':'一','2':'二','3':'三','4':'四','5':'五','6':'六','7':'日' };
+  const descs: string[] = [];
+
+  if (mon !== '*') descs.push(mon.includes('/') ? `每隔 ${mon.split('/')[1]} 个月` : `${mon} 月`);
+  if (dow !== '*') {
+    const mapDow = (v: string) => '周' + (dowNames[v] || v);
+    if (dow.includes('-')) { const [a, b] = dow.split('-'); descs.push(`${mapDow(a)}至${mapDow(b)}`); }
+    else if (dow.includes(',')) descs.push(dow.split(',').map(mapDow).join('、'));
+    else descs.push(`每${mapDow(dow)}`);
+  }
+  if (dom !== '*' && dow === '*') descs.push(dom.includes('/') ? `每隔 ${dom.split('/')[1]} 天` : `每月 ${dom} 日`);
+  if (hour !== '*') {
+    if (hour.includes('/')) descs.push(`每隔 ${hour.split('/')[1]} 小时`);
+    else descs.push(`${hour} 时`);
+  }
+  if (min !== '*') {
+    if (min.includes('/')) descs.push(`每隔 ${min.split('/')[1]} 分钟`);
+    else descs.push(`${min} 分`);
+  } else if (hour !== '*' && !hour.includes('/')) {
+    descs.push('每分钟');
+  }
+
+  return descs.join(' ') + '执行';
+}
+
+function getNextCronTimes(parts: string[], count: number): string[] {
+  const [minE, hourE, domE, monE, dowE] = parts;
+  const results: string[] = [];
+  const now = new Date();
+  let check = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0);
+  const maxIter = 525600;
+  for (let i = 0; i < maxIter && results.length < count; i++) {
+    if (
+      matchField(check.getMinutes(), minE, 0, 59) &&
+      matchField(check.getHours(), hourE, 0, 23) &&
+      matchField(check.getDate(), domE, 1, 31) &&
+      matchField(check.getMonth() + 1, monE, 1, 12) &&
+      matchField(check.getDay(), dowE, 0, 6)
+    ) {
+      results.push(check.toLocaleString('zh-CN', { hour12: false }));
+    }
+    check = new Date(check.getTime() + 60000);
+  }
+  return results;
+}
+
+function matchField(value: number, expr: string, min: number, max: number): boolean {
+  if (expr === '*') return true;
+  for (const part of expr.split(',')) {
+    if (part.includes('/')) {
+      const [rangeStr, stepStr] = part.split('/');
+      const step = parseInt(stepStr);
+      let start = min;
+      if (rangeStr !== '*') {
+        if (rangeStr.includes('-')) {
+          const [s, e] = rangeStr.split('-').map(Number);
+          if (value >= s && value <= e && (value - s) % step === 0) return true;
+          continue;
+        }
+        start = parseInt(rangeStr);
+      }
+      for (let v = start; v <= max; v += step) { if (v === value) return true; }
+    } else if (part.includes('-')) {
+      const [s, e] = part.split('-').map(Number);
+      if (value >= s && value <= e) return true;
+    } else {
+      if (parseInt(part) === value) return true;
+    }
+  }
+  return false;
 }
 </script>
 
 <template>
-  <!-- 工具集面板：左侧工具菜单 + 右侧工具操作区 -->
   <div class="tools-panel">
-    <!-- 左侧工具导航栏 -->
+    <!-- 左侧分组导航栏 -->
     <aside class="tools-sidebar">
-      <!-- 遍历工具列表，点击切换当前激活的工具 -->
-      <div
-        v-for="t in tools" :key="t.key"
-        class="tool-item" :class="{ active: activeTool === t.key }"
-        @click="activeTool = t.key"
-      >
-        <span class="tool-icon">{{ t.icon }}</span>
-        <span class="tool-label">{{ t.label }}</span>
+      <div v-for="group in toolGroups" :key="group.categoryEn" class="tool-group">
+        <div class="tool-group-title">
+          <span class="group-indicator"></span>
+          <span>{{ group.categoryEn }}</span>
+        </div>
+        <div
+          v-for="t in group.tools" :key="t.key"
+          class="tool-item" :class="{ active: activeTool === t.key }"
+          @click="activeTool = t.key"
+        >
+          <span class="tool-icon">{{ t.icon }}</span>
+          <span class="tool-label">{{ t.label }}</span>
+        </div>
       </div>
     </aside>
 
     <!-- 右侧工具内容区域 -->
     <div class="tools-content">
-      <!-- JSON 格式化工具 -->
-      <div v-if="activeTool === 'json'" class="tool-area">
-        <h3>JSON 格式化</h3>
-        <!-- 输入输出双栏布局 -->
-        <div class="tool-row">
-          <div class="tool-col">
-            <label>输入</label>
-            <el-input v-model="jsonInput" type="textarea" :rows="12" placeholder="粘贴 JSON 字符串..." />
-          </div>
-          <div class="tool-col">
-            <label>输出</label>
-            <el-input v-model="jsonOutput" type="textarea" :rows="12" readonly />
-          </div>
+      <div class="tool-card" v-if="currentTool">
+        <div class="tool-card-header">
+          <h3>{{ currentTool.label }}</h3>
+          <p class="tool-desc">{{ currentTool.desc }}</p>
+          <div class="tool-card-divider"></div>
         </div>
-        <!-- JSON 解析错误提示 -->
-        <div v-if="jsonError" class="tool-error">{{ jsonError }}</div>
-        <!-- 操作按钮：格式化 / 压缩 / 复制 -->
-        <div class="tool-actions">
-          <el-button type="primary" @click="formatJson">格式化</el-button>
-          <el-button @click="compressJson">压缩</el-button>
-          <el-button @click="copyText(jsonOutput)" :disabled="!jsonOutput">复制结果</el-button>
-        </div>
-      </div>
+        <div class="tool-card-body">
 
-      <!-- URL 编解码工具 -->
-      <div v-if="activeTool === 'url'" class="tool-area">
-        <h3>URL 编解码</h3>
-        <!-- 输入输出双栏布局 -->
-        <div class="tool-row">
-          <div class="tool-col">
-            <label>输入</label>
-            <el-input v-model="urlInput" type="textarea" :rows="6" placeholder="输入文本或 URL..." />
-          </div>
-          <div class="tool-col">
-            <label>输出</label>
-            <el-input v-model="urlOutput" type="textarea" :rows="6" readonly />
-          </div>
-        </div>
-        <!-- 操作按钮：编码 / 解码 / 复制 -->
-        <div class="tool-actions">
-          <el-button type="primary" @click="urlEncode">编码 (Encode)</el-button>
-          <el-button type="primary" @click="urlDecode">解码 (Decode)</el-button>
-          <el-button @click="copyText(urlOutput)" :disabled="!urlOutput">复制结果</el-button>
-        </div>
-      </div>
-
-      <!-- Base64 编解码工具 -->
-      <div v-if="activeTool === 'base64'" class="tool-area">
-        <h3>Base64 编解码</h3>
-        <!-- 输入输出双栏布局 -->
-        <div class="tool-row">
-          <div class="tool-col">
-            <label>输入</label>
-            <el-input v-model="b64Input" type="textarea" :rows="6" placeholder="输入文本或 Base64 字符串..." />
-          </div>
-          <div class="tool-col">
-            <label>输出</label>
-            <el-input v-model="b64Output" type="textarea" :rows="6" readonly />
-          </div>
-        </div>
-        <!-- 操作按钮：编码 / 解码 / 复制 -->
-        <div class="tool-actions">
-          <el-button type="primary" @click="b64Encode">编码 (Encode)</el-button>
-          <el-button type="primary" @click="b64Decode">解码 (Decode)</el-button>
-          <el-button @click="copyText(b64Output)" :disabled="!b64Output">复制结果</el-button>
-        </div>
-      </div>
-
-      <!-- 时间戳转换工具 -->
-      <div v-if="activeTool === 'timestamp'" class="tool-area">
-        <h3>时间戳转换</h3>
-        <!-- 实时显示当前秒级时间戳 -->
-        <div class="tool-hint">当前时间戳（秒）：<code>{{ nowTs }}</code></div>
-        <!-- 输入输出双栏布局 -->
-        <div class="tool-row">
-          <div class="tool-col">
-            <label>输入（时间戳或日期字符串）</label>
-            <el-input v-model="tsInput" placeholder="如 1700000000 或 2024-01-01 12:00:00" />
-          </div>
-          <div class="tool-col">
-            <label>输出</label>
-            <el-input v-model="tsOutput" type="textarea" :rows="3" readonly />
-          </div>
-        </div>
-        <!-- 操作按钮：时间戳→日期 / 日期→时间戳 / 复制 -->
-        <div class="tool-actions">
-          <el-button type="primary" @click="tsToDate">时间戳 → 日期</el-button>
-          <el-button type="primary" @click="dateToTs">日期 → 时间戳</el-button>
-          <el-button @click="copyText(tsOutput)" :disabled="!tsOutput">复制结果</el-button>
-        </div>
-      </div>
-
-      <!-- UUID 生成工具 -->
-      <div v-if="activeTool === 'uuid'" class="tool-area">
-        <h3>UUID 生成</h3>
-        <!-- 左侧数量选择 + 右侧结果展示 -->
-        <div class="tool-row" style="align-items: flex-start;">
-          <div class="tool-col" style="flex: 0 0 200px;">
-            <label>生成数量</label>
-            <el-input-number v-model="uuidCount" :min="1" :max="100" />
-          </div>
-          <div class="tool-col">
-            <label>结果</label>
-            <el-input v-model="uuidOutput" type="textarea" :rows="8" readonly />
-          </div>
-        </div>
-        <!-- 操作按钮：生成 / 复制 -->
-        <div class="tool-actions">
-          <el-button type="primary" @click="generateUUID">生成</el-button>
-          <el-button @click="copyText(uuidOutput)" :disabled="!uuidOutput">复制结果</el-button>
-        </div>
-      </div>
-
-      <!-- 正则测试工具 -->
-      <div v-if="activeTool === 'regex'" class="tool-area">
-        <h3>正则测试</h3>
-        <!-- 正则表达式输入 + Flags 输入 -->
-        <div class="tool-row">
-          <div class="tool-col" style="flex: 2;">
-            <label>正则表达式</label>
-            <el-input v-model="regexPattern" placeholder="如 \d+" />
-          </div>
-          <div class="tool-col" style="flex: 0 0 120px;">
-            <label>Flags</label>
-            <el-input v-model="regexFlags" placeholder="g" />
-          </div>
-        </div>
-        <!-- 测试文本输入区 -->
-        <div class="tool-col" style="margin-top: 12px;">
-          <label>测试文本</label>
-          <el-input v-model="regexTestStr" type="textarea" :rows="4" placeholder="输入要测试的文本..." />
-        </div>
-        <!-- 匹配结果高亮展示区 -->
-        <div v-if="regexTestStr" class="regex-result">
-          <label>匹配结果（{{ regexMatches.length }} 个匹配）</label>
-          <div class="regex-preview" v-html="regexHighlighted"></div>
-        </div>
-      </div>
-
-      <!-- JSON → TypeScript Interface 转换工具 -->
-      <div v-if="activeTool === 'json2ts'" class="tool-area">
-        <h3>JSON → TypeScript Interface</h3>
-        <!-- 根 Interface 名称输入 -->
-        <div class="tool-col" style="margin-bottom: 12px;">
-          <label>根 Interface 名称</label>
-          <el-input v-model="j2tsRootName" placeholder="Root" style="width: 200px;" />
-        </div>
-        <!-- JSON 输入编辑器 + TS 输出编辑器双栏布局 -->
-        <div class="tool-row j2ts-editors">
-          <div class="tool-col">
-            <label>JSON 输入</label>
-            <!-- JSON 代码编辑器：支持语法高亮和自动格式化 -->
-            <div class="editor-box">
-              <CodeEditor
-                :modelValue="j2tsInput"
-                @change="onJ2tsJsonChange"
-                language="json"
-                :isDark="isDark"
-              />
+          <!-- JSON 格式化 -->
+          <template v-if="activeTool === 'json'">
+            <div class="tool-row json-editors">
+              <div class="tool-col">
+                <label>输入</label>
+                <div class="editor-box">
+                  <CodeEditor v-model="jsonInput" language="json" :isDark="isDark" />
+                </div>
+              </div>
+              <div class="tool-col">
+                <label>输出</label>
+                <div class="editor-box">
+                  <CodeEditor v-model="jsonOutput" language="json" :isDark="isDark" :readonly="true" />
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="tool-col">
-            <label>TypeScript Interface 输出</label>
-            <!-- TypeScript 代码编辑器：只读模式，显示生成的 Interface -->
-            <div class="editor-box">
-              <CodeEditor
-                v-model="j2tsOutput"
-                language="typescript"
-                :isDark="isDark"
-                :readonly="true"
-              />
+            <div v-if="jsonError" class="tool-error">{{ jsonError }}</div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="formatJson">格式化</el-button>
+              <el-button @click="compressJson">压缩</el-button>
+              <el-button @click="copyText(jsonOutput)" :disabled="!jsonOutput">复制结果</el-button>
             </div>
-          </div>
-        </div>
-        <!-- JSON 解析错误提示 -->
-        <div v-if="j2tsError" class="tool-error">{{ j2tsError }}</div>
-        <!-- 操作按钮：转换 / 复制 -->
-        <div class="tool-actions">
-          <el-button type="primary" @click="jsonToTs">转换</el-button>
-          <el-button @click="copyText(j2tsOutput)" :disabled="!j2tsOutput">复制结果</el-button>
+          </template>
+
+          <!-- JSON → TypeScript Interface -->
+          <template v-if="activeTool === 'json2ts'">
+            <div class="tool-col" style="margin-bottom: 12px;">
+              <label>根 Interface 名称</label>
+              <el-input v-model="j2tsRootName" placeholder="Root" style="width: 200px;" />
+            </div>
+            <div class="tool-row j2ts-editors">
+              <div class="tool-col">
+                <label>JSON 输入</label>
+                <div class="editor-box">
+                  <CodeEditor :modelValue="j2tsInput" @change="onJ2tsJsonChange" language="json" :isDark="isDark" />
+                </div>
+              </div>
+              <div class="tool-col">
+                <label>TypeScript Interface 输出</label>
+                <div class="editor-box">
+                  <CodeEditor v-model="j2tsOutput" language="typescript" :isDark="isDark" :readonly="true" />
+                </div>
+              </div>
+            </div>
+            <div v-if="j2tsError" class="tool-error">{{ j2tsError }}</div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="jsonToTs">转换</el-button>
+              <el-button @click="copyText(j2tsOutput)" :disabled="!j2tsOutput">复制结果</el-button>
+            </div>
+          </template>
+
+          <!-- URL 编解码 -->
+          <template v-if="activeTool === 'url'">
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>输入</label>
+                <el-input v-model="urlInput" type="textarea" :rows="6" placeholder="输入文本或 URL..." />
+              </div>
+              <div class="tool-col">
+                <label>输出</label>
+                <el-input v-model="urlOutput" type="textarea" :rows="6" readonly />
+              </div>
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="urlEncode">编码 (Encode)</el-button>
+              <el-button type="primary" @click="urlDecode">解码 (Decode)</el-button>
+              <el-button @click="copyText(urlOutput)" :disabled="!urlOutput">复制结果</el-button>
+            </div>
+          </template>
+
+          <!-- Base64 编解码 -->
+          <template v-if="activeTool === 'base64'">
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>输入</label>
+                <el-input v-model="b64Input" type="textarea" :rows="6" placeholder="输入文本或 Base64 字符串..." />
+              </div>
+              <div class="tool-col">
+                <label>输出</label>
+                <el-input v-model="b64Output" type="textarea" :rows="6" readonly />
+              </div>
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="b64Encode">编码 (Encode)</el-button>
+              <el-button type="primary" @click="b64Decode">解码 (Decode)</el-button>
+              <el-button @click="copyText(b64Output)" :disabled="!b64Output">复制结果</el-button>
+            </div>
+          </template>
+
+          <!-- HTML 实体编解码 -->
+          <template v-if="activeTool === 'htmlencode'">
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>输入</label>
+                <el-input v-model="htmlEncInput" type="textarea" :rows="6" placeholder="输入 HTML 或实体编码文本..." />
+              </div>
+              <div class="tool-col">
+                <label>输出</label>
+                <el-input v-model="htmlEncOutput" type="textarea" :rows="6" readonly />
+              </div>
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="htmlEntityEncode">编码 (Encode)</el-button>
+              <el-button type="primary" @click="htmlEntityDecode">解码 (Decode)</el-button>
+              <el-button @click="copyText(htmlEncOutput)" :disabled="!htmlEncOutput">复制结果</el-button>
+            </div>
+          </template>
+
+          <!-- 时间戳转换 -->
+          <template v-if="activeTool === 'timestamp'">
+            <div class="tool-hint">当前时间戳（秒）：<code>{{ nowTs }}</code></div>
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>输入（时间戳或日期字符串）</label>
+                <el-input v-model="tsInput" placeholder="如 1700000000 或 2024-01-01 12:00:00" />
+              </div>
+              <div class="tool-col">
+                <label>输出</label>
+                <el-input v-model="tsOutput" type="textarea" :rows="3" readonly />
+              </div>
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="tsToDate">时间戳 → 日期</el-button>
+              <el-button type="primary" @click="dateToTs">日期 → 时间戳</el-button>
+              <el-button @click="copyText(tsOutput)" :disabled="!tsOutput">复制结果</el-button>
+            </div>
+          </template>
+
+          <!-- UUID 生成 -->
+          <template v-if="activeTool === 'uuid'">
+            <div class="tool-row" style="align-items: flex-start;">
+              <div class="tool-col" style="flex: 0 0 200px;">
+                <label>生成数量</label>
+                <el-input-number v-model="uuidCount" :min="1" :max="100" />
+              </div>
+              <div class="tool-col">
+                <label>结果</label>
+                <el-input v-model="uuidOutput" type="textarea" :rows="8" readonly />
+              </div>
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="generateUUID">生成</el-button>
+              <el-button @click="copyText(uuidOutput)" :disabled="!uuidOutput">复制结果</el-button>
+            </div>
+          </template>
+
+          <!-- 颜色转换 -->
+          <template v-if="activeTool === 'color'">
+            <div class="color-tool-layout">
+              <div class="color-inputs">
+                <div class="tool-col">
+                  <label>HEX</label>
+                  <el-input v-model="colorHex" placeholder="#409EFF" @input="onColorHexInput" />
+                </div>
+                <div class="tool-col">
+                  <label>RGB</label>
+                  <div class="color-rgb-row">
+                    <el-input-number v-model="colorR" :min="0" :max="255" controls-position="right" @change="onColorRgbInput" />
+                    <el-input-number v-model="colorG" :min="0" :max="255" controls-position="right" @change="onColorRgbInput" />
+                    <el-input-number v-model="colorB" :min="0" :max="255" controls-position="right" @change="onColorRgbInput" />
+                  </div>
+                </div>
+                <div class="tool-col">
+                  <label>HSL</label>
+                  <div class="color-rgb-row">
+                    <el-input-number v-model="colorH" :min="0" :max="360" controls-position="right" @change="onColorHslInput" />
+                    <el-input-number v-model="colorS" :min="0" :max="100" controls-position="right" @change="onColorHslInput" />
+                    <el-input-number v-model="colorL" :min="0" :max="100" controls-position="right" @change="onColorHslInput" />
+                  </div>
+                </div>
+              </div>
+              <div class="color-preview" :style="{ background: colorPreview }"></div>
+            </div>
+            <div class="tool-toolbar">
+              <el-button @click="copyText(colorHex)">复制 HEX</el-button>
+              <el-button @click="copyText(`rgb(${colorR}, ${colorG}, ${colorB})`)">复制 RGB</el-button>
+              <el-button @click="copyText(`hsl(${colorH}, ${colorS}%, ${colorL}%)`)">复制 HSL</el-button>
+            </div>
+          </template>
+
+          <!-- 进制转换 -->
+          <template v-if="activeTool === 'radix'">
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>二进制 (BIN)</label>
+                <el-input v-model="radixBin" placeholder="如 11111111" @input="onRadixInput('bin')" />
+              </div>
+              <div class="tool-col">
+                <label>八进制 (OCT)</label>
+                <el-input v-model="radixOct" placeholder="如 377" @input="onRadixInput('oct')" />
+              </div>
+            </div>
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>十进制 (DEC)</label>
+                <el-input v-model="radixDec" placeholder="如 255" @input="onRadixInput('dec')" />
+              </div>
+              <div class="tool-col">
+                <label>十六进制 (HEX)</label>
+                <el-input v-model="radixHexVal" placeholder="如 FF" @input="onRadixInput('hex')" />
+              </div>
+            </div>
+            <div v-if="radixError" class="tool-error">{{ radixError }}</div>
+          </template>
+
+          <!-- 哈希生成 -->
+          <template v-if="activeTool === 'hash'">
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>输入文本</label>
+                <el-input v-model="hashInput" type="textarea" :rows="6" placeholder="输入要计算哈希的文本..." />
+              </div>
+              <div class="tool-col">
+                <label>哈希结果</label>
+                <el-input v-model="hashOutput" type="textarea" :rows="6" readonly />
+              </div>
+            </div>
+            <div class="tool-toolbar">
+              <el-select v-model="hashAlgo" style="width: 140px;">
+                <el-option label="SHA-1" value="SHA-1" />
+                <el-option label="SHA-256" value="SHA-256" />
+                <el-option label="SHA-512" value="SHA-512" />
+              </el-select>
+              <el-button type="primary" @click="generateHash">生成</el-button>
+              <el-button @click="copyText(hashOutput)" :disabled="!hashOutput">复制结果</el-button>
+            </div>
+          </template>
+
+          <!-- 随机密码生成 -->
+          <template v-if="activeTool === 'password'">
+            <div class="tool-row" style="align-items: flex-start;">
+              <div class="tool-col" style="flex: 0 0 220px;">
+                <label>密码长度：{{ pwdLength }}</label>
+                <el-slider v-model="pwdLength" :min="4" :max="64" />
+              </div>
+              <div class="tool-col">
+                <label>字符类型</label>
+                <div class="pwd-options">
+                  <el-checkbox v-model="pwdUppercase">大写字母 (A-Z)</el-checkbox>
+                  <el-checkbox v-model="pwdLowercase">小写字母 (a-z)</el-checkbox>
+                  <el-checkbox v-model="pwdDigits">数字 (0-9)</el-checkbox>
+                  <el-checkbox v-model="pwdSpecial">特殊字符 (!@#$...)</el-checkbox>
+                </div>
+              </div>
+            </div>
+            <div v-if="pwdOutput" class="tool-col" style="margin-top: 12px;">
+              <label>生成结果</label>
+              <el-input v-model="pwdOutput" readonly />
+              <div class="pwd-strength-bar">
+                <div class="pwd-strength-track">
+                  <div
+                    v-for="i in 4" :key="i"
+                    class="pwd-strength-segment"
+                    :style="{ background: i <= pwdStrength.level ? pwdStrength.color : 'var(--border-color)' }"
+                  ></div>
+                </div>
+                <span class="pwd-strength-text" :style="{ color: pwdStrength.color }">{{ pwdStrength.text }}</span>
+              </div>
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="generatePassword">生成密码</el-button>
+              <el-button @click="copyText(pwdOutput)" :disabled="!pwdOutput">复制密码</el-button>
+            </div>
+          </template>
+
+          <!-- 正则测试 -->
+          <template v-if="activeTool === 'regex'">
+            <div class="tool-row">
+              <div class="tool-col" style="flex: 2;">
+                <label>正则表达式</label>
+                <el-input v-model="regexPattern" placeholder="如 \d+" />
+              </div>
+              <div class="tool-col" style="flex: 0 0 120px;">
+                <label>Flags</label>
+                <el-input v-model="regexFlags" placeholder="g" />
+              </div>
+            </div>
+            <div class="tool-col" style="margin-top: 12px;">
+              <label>测试文本</label>
+              <el-input v-model="regexTestStr" type="textarea" :rows="4" placeholder="输入要测试的文本..." />
+            </div>
+            <div v-if="regexTestStr" class="regex-result">
+              <label>匹配结果（{{ regexMatches.length }} 个匹配）</label>
+              <div class="regex-preview" v-html="regexHighlighted"></div>
+            </div>
+          </template>
+
+          <!-- 文本对比 -->
+          <template v-if="activeTool === 'diff'">
+            <div class="tool-row">
+              <div class="tool-col">
+                <label>原始文本</label>
+                <el-input v-model="diffLeft" type="textarea" :rows="8" placeholder="输入原始文本..." />
+              </div>
+              <div class="tool-col">
+                <label>对比文本</label>
+                <el-input v-model="diffRight" type="textarea" :rows="8" placeholder="输入对比文本..." />
+              </div>
+            </div>
+            <div v-if="diffResult.length" class="diff-output">
+              <label>对比结果</label>
+              <div class="diff-lines">
+                <div
+                  v-for="(line, idx) in diffResult" :key="idx"
+                  class="diff-line"
+                  :class="{ 'diff-del': line.type === 'del', 'diff-add': line.type === 'add' }"
+                >
+                  <span class="diff-prefix">{{ line.type === 'del' ? '-' : line.type === 'add' ? '+' : ' ' }}</span>
+                  <span>{{ line.text }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Markdown 预览 -->
+          <template v-if="activeTool === 'markdown'">
+            <div class="tool-row md-layout">
+              <div class="tool-col">
+                <label>Markdown 输入</label>
+                <el-input v-model="mdInput" type="textarea" :rows="16" placeholder="输入 Markdown 内容..." />
+              </div>
+              <div class="tool-col">
+                <label>预览</label>
+                <div class="md-preview" v-html="mdRendered"></div>
+              </div>
+            </div>
+          </template>
+
+          <!-- 文本统计 -->
+          <template v-if="activeTool === 'textstat'">
+            <div class="tool-col">
+              <label>输入文本</label>
+              <el-input v-model="textStatInput" type="textarea" :rows="8" placeholder="输入或粘贴文本..." />
+            </div>
+            <div class="stat-cards">
+              <div class="stat-card">
+                <div class="stat-value">{{ textStats.chars }}</div>
+                <div class="stat-label-text">字符数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ textStats.words }}</div>
+                <div class="stat-label-text">字数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ textStats.lines }}</div>
+                <div class="stat-label-text">行数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ textStats.bytes }}</div>
+                <div class="stat-label-text">字节数 (UTF-8)</div>
+              </div>
+            </div>
+          </template>
+
+          <!-- JWT 解析 -->
+          <template v-if="activeTool === 'jwt'">
+            <div class="tool-col">
+              <label>JWT Token</label>
+              <el-input v-model="jwtInput" type="textarea" :rows="4" placeholder="粘贴 JWT Token..." />
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="decodeJwt">解码</el-button>
+            </div>
+            <div v-if="jwtError" class="tool-error">{{ jwtError }}</div>
+            <div v-if="jwtExpInfo" class="tool-hint" style="margin-top: 12px;">{{ jwtExpInfo }}</div>
+            <div v-if="jwtHeader || jwtPayload" class="tool-row" style="margin-top: 12px;">
+              <div class="tool-col">
+                <label>Header</label>
+                <el-input v-model="jwtHeader" type="textarea" :rows="6" readonly />
+              </div>
+              <div class="tool-col">
+                <label>Payload</label>
+                <el-input v-model="jwtPayload" type="textarea" :rows="6" readonly />
+              </div>
+            </div>
+            <div v-if="jwtHeader" class="tool-toolbar">
+              <el-button @click="copyText(jwtHeader)">复制 Header</el-button>
+              <el-button @click="copyText(jwtPayload)">复制 Payload</el-button>
+            </div>
+          </template>
+
+          <!-- Cron 表达式 -->
+          <template v-if="activeTool === 'cron'">
+            <div class="tool-col">
+              <label>Cron 表达式（5 字段：分 时 日 月 周）</label>
+              <el-input v-model="cronInput" placeholder="如 */5 * * * *" />
+            </div>
+            <div class="tool-toolbar">
+              <el-button type="primary" @click="parseCron">解析</el-button>
+            </div>
+            <div v-if="cronError" class="tool-error">{{ cronError }}</div>
+            <div v-if="cronDesc" class="cron-desc">{{ cronDesc }}</div>
+            <div v-if="cronNextTimes.length" class="cron-times">
+              <label>接下来 5 次执行时间</label>
+              <div v-for="(t, i) in cronNextTimes" :key="i" class="cron-time-item">
+                {{ i + 1 }}. {{ t }}
+              </div>
+            </div>
+          </template>
+
         </div>
       </div>
     </div>
@@ -549,83 +1117,125 @@ function capitalize(s: string) {
 </template>
 
 <style scoped>
-/* ==================== 工具面板整体布局 ==================== */
+/* ==================== 整体布局 ==================== */
 
-/** 工具面板容器：左右分栏布局 */
 .tools-panel {
   display: flex;
   height: 100%;
   overflow: hidden;
 }
 
-/** 左侧工具导航栏 */
+/* ==================== 侧边栏 ==================== */
+
 .tools-sidebar {
-  width: 140px;
+  width: 160px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-color);
   padding: 12px 8px;
   overflow-y: auto;
 }
 
-/* ==================== 工具菜单项样式 ==================== */
+.tool-group {
+  margin-bottom: 16px;
+}
 
-/** 单个工具菜单项 */
+.tool-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+}
+
+.group-indicator {
+  width: 3px;
+  height: 12px;
+  background: var(--primary-color);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
 .tool-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
   color: var(--text-secondary);
   font-size: 13px;
   transition: all 0.2s;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
-/** 工具菜单项悬停状态 */
 .tool-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-/** 工具菜单项激活状态 */
 .tool-item.active { background: var(--primary-bg); color: var(--primary-color); font-weight: 600; }
 
-/** 工具图标：等宽字体显示 */
 .tool-icon {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   width: 28px;
   text-align: center;
   flex-shrink: 0;
-  font-family: monospace;
+  font-family: 'Courier New', Courier, monospace;
 }
-/** 工具名称标签：不换行 */
-.tool-label { white-space: nowrap; }
+.tool-label { white-space: nowrap; font-size: 12px; }
 
-/* ==================== 右侧工具内容区 ==================== */
+/* ==================== 内容区域 ==================== */
 
-/** 工具内容区容器 */
 .tools-content {
   flex: 1;
   padding: 20px 24px;
   overflow-y: auto;
 }
 
-/** 工具区域标题 */
-.tool-area h3 {
-  margin: 0 0 16px;
+/* ==================== 卡片系统 ==================== */
+
+.tool-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tool-card-header {
+  padding: 20px 24px 0;
+}
+
+.tool-card-header h3 {
+  margin: 0;
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-/* ==================== 工具通用布局组件 ==================== */
+.tool-desc {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
 
-/** 工具行：水平排列的输入输出区域 */
+.tool-card-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin-top: 16px;
+}
+
+.tool-card-body {
+  padding: 20px 24px;
+}
+
+/* ==================== 通用布局组件 ==================== */
+
 .tool-row {
   display: flex;
   gap: 16px;
   margin-bottom: 12px;
 }
 
-/** 工具列：垂直排列的标签和输入框 */
 .tool-col {
   flex: 1;
   display: flex;
@@ -633,56 +1243,52 @@ function capitalize(s: string) {
   gap: 6px;
 }
 
-/** 工具列标签文字 */
 .tool-col label {
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
 }
 
-/** 操作按钮区域 */
-.tool-actions {
+.tool-toolbar {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  align-items: center;
 }
 
-/** 错误提示文字 */
 .tool-error {
   color: #f56c6c;
   font-size: 12px;
   margin-top: 8px;
 }
 
-/** 提示信息文字（如时间戳工具的当前时间戳） */
 .tool-hint {
   font-size: 13px;
   color: var(--text-secondary);
   margin-bottom: 12px;
 }
-/** 提示信息中的代码高亮 */
 .tool-hint code {
   color: var(--primary-color);
   font-weight: 600;
   font-size: 14px;
 }
 
-/* ==================== 正则测试工具专用样式 ==================== */
+/* ==================== 正则测试 ==================== */
 
-/** 正则匹配结果区域 */
 .regex-result {
   margin-top: 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-/** 正则匹配结果标签 */
 .regex-result label {
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
 }
-/** 正则匹配结果预览区：等宽字体，保留空白 */
 .regex-preview {
   padding: 12px;
   background: var(--bg-hover);
@@ -694,7 +1300,6 @@ function capitalize(s: string) {
   word-break: break-all;
   color: var(--text-primary);
 }
-/** 正则匹配高亮标记样式 */
 .regex-preview :deep(.regex-match) {
   background: rgba(64, 158, 255, 0.3);
   color: var(--primary-color);
@@ -702,17 +1307,242 @@ function capitalize(s: string) {
   border-radius: 2px;
 }
 
-/* ==================== JSON → TS 工具专用样式 ==================== */
+/* ==================== JSON → TS ==================== */
 
-/** JSON → TS 编辑器区域固定高度 */
+.json-editors,
 .j2ts-editors {
   height: 350px;
 }
-/** 代码编辑器容器：自适应剩余高度 */
 .editor-box {
   flex: 1;
   min-height: 0;
   border-radius: 6px;
   overflow: hidden;
+}
+
+/* ==================== 颜色转换 ==================== */
+
+.color-tool-layout {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+.color-inputs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.color-rgb-row {
+  display: flex;
+  gap: 8px;
+}
+.color-rgb-row .el-input-number { flex: 1; }
+.color-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ==================== 文本对比 ==================== */
+
+.diff-output {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.diff-output label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.diff-lines {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: monospace;
+  font-size: 13px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.diff-line {
+  padding: 2px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+.diff-prefix {
+  display: inline-block;
+  width: 16px;
+  font-weight: 700;
+  user-select: none;
+}
+.diff-del { background: rgba(245, 108, 108, 0.15); color: #f56c6c; }
+.diff-add { background: rgba(103, 194, 58, 0.15); color: #67c23a; }
+
+/* ==================== 文本统计 ==================== */
+
+.stat-cards {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stat-card {
+  flex: 1;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--primary-color);
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.stat-label-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* ==================== 随机密码 ==================== */
+
+.pwd-options {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pwd-strength-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pwd-strength-track {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.pwd-strength-segment {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  transition: background 0.3s;
+}
+
+.pwd-strength-text {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 32px;
+}
+
+/* ==================== Markdown 预览 ==================== */
+
+.md-layout {
+  align-items: stretch;
+}
+
+.md-preview {
+  flex: 1;
+  padding: 16px;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  min-height: 300px;
+  max-height: 500px;
+}
+
+.md-preview :deep(h1) { font-size: 24px; font-weight: 700; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); }
+.md-preview :deep(h2) { font-size: 20px; font-weight: 700; margin: 16px 0 8px; }
+.md-preview :deep(h3) { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
+.md-preview :deep(h4) { font-size: 14px; font-weight: 600; margin: 10px 0 4px; }
+.md-preview :deep(p) { margin: 0 0 8px; }
+.md-preview :deep(strong) { font-weight: 700; }
+.md-preview :deep(em) { font-style: italic; }
+.md-preview :deep(code) {
+  background: rgba(64, 158, 255, 0.1);
+  color: var(--primary-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+}
+.md-preview :deep(pre) {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.md-preview :deep(pre code) {
+  background: none;
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.md-preview :deep(ul),
+.md-preview :deep(ol) {
+  margin: 4px 0 8px;
+  padding-left: 24px;
+}
+.md-preview :deep(li) {
+  margin-bottom: 2px;
+}
+.md-preview :deep(a) {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+.md-preview :deep(a:hover) {
+  text-decoration: underline;
+}
+
+/* ==================== Cron 表达式 ==================== */
+
+.cron-desc {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--primary-bg);
+  border-radius: 8px;
+  color: var(--primary-color);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.cron-times {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cron-times label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.cron-time-item {
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  color: var(--text-primary);
 }
 </style>

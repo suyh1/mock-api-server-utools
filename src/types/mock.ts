@@ -26,6 +26,7 @@ export interface RealUrlConfig {
 
 export interface MockRule {
     id: number;
+    name?: string;                 // 接口名称（可选，用于在侧边栏显示更友好的标识）
     active: boolean;
     method: HttpMethod;
     url: string;

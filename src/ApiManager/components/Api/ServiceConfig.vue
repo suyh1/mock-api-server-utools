@@ -180,7 +180,7 @@ const handleStart = async () => {
       body: JSON.stringify({
         groupId: props.group.id,
         port: formData.value.port,
-        prefix: formData.value.prefix
+        prefix: formData.value.prefix ? (formData.value.prefix.startsWith('/') ? formData.value.prefix : '/' + formData.value.prefix) : ''
       })
     });
     const data = await res.json();
@@ -189,7 +189,9 @@ const handleStart = async () => {
       formData.value.running = true;
       // 再次保存以更新 running 状态
       saveToLocal();
-      const url = `http://${localIp.value}:${formData.value.port}${formData.value.prefix}`;
+      let pfx = formData.value.prefix || '';
+      if (pfx && !pfx.startsWith('/')) pfx = '/' + pfx;
+      const url = `http://${localIp.value}:${formData.value.port}${pfx}`;
       ElMessage.success(`服务已启动: ${url}`);
     } else {
       ElMessage.error('启动失败: ' + (data.error || '未知错误'));

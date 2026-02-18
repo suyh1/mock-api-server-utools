@@ -151,6 +151,7 @@ const handleGroupConfig = (group: MockGroup) => { configGroupId.value = group.id
 const handleAddRule = (group: MockGroup) => {
   const newRule: MockRule = {
     id: Date.now(),
+    name: '',
     active: true,
     method: appSettings?.defaultMethod || 'GET',
     url: '/api/new',
@@ -198,6 +199,10 @@ const handleToggleRule = () => { saveData(); };
  * 将编辑区的数据合并回原始分组数据中，并提交到后端
  */
 const handleSaveRule = () => {
+  // 规范化 URL 路径，确保以 / 开头
+  if (editingRule.value.url && !editingRule.value.url.startsWith('/')) {
+    editingRule.value.url = '/' + editingRule.value.url;
+  }
   for (const group of groups.value) {
     const idx = group.children.findIndex(r => r.id === currentRuleId.value);
     if (idx !== -1) {

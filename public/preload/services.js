@@ -157,8 +157,9 @@ function startGroupServer(rawGroupId, port, prefix) {
       if (url === '/') return;
 
       if (prefix) {
-        if (!url.startsWith(prefix)) return res.status(404).json({ error: `Path prefix mismatch: ${prefix}` });
-        url = url.slice(prefix.length);
+        const normalizedPrefix = prefix.startsWith('/') ? prefix : '/' + prefix;
+        if (!url.startsWith(normalizedPrefix)) return res.status(404).json({ error: `Path prefix mismatch: ${normalizedPrefix}` });
+        url = url.slice(normalizedPrefix.length);
         if (!url.startsWith('/')) url = '/' + url;
       }
 
@@ -166,9 +167,11 @@ function startGroupServer(rawGroupId, port, prefix) {
       const targetGroup = groups.find(g => String(g.id) === groupId);
       if (!targetGroup) return res.status(404).json({ error: 'Group not found' });
 
-      const matchedRule = targetGroup.children.find(r =>
-          r.active && r.method === method && r.url === url
-      );
+      const matchedRule = targetGroup.children.find(r => {
+          let ruleUrl = r.url;
+          if (ruleUrl && !ruleUrl.startsWith('/')) ruleUrl = '/' + ruleUrl;
+          return r.active && r.method === method && ruleUrl === url;
+      });
 
       if (matchedRule) {
         console.log(`[Group ${groupId}] Hit: ${method} ${url}`);

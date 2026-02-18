@@ -63,6 +63,8 @@ const interfaceTab = ref('req-header');
 /** 调试面板中请求元信息区域是否展开 */
 // 请求详情是否展开
 const showMeta = ref(false);
+/** 是否展开真实地址的详细配置（协议/主机/端口/前缀） */
+const showRealDetail = ref(false);
 
 /**
  * 接口规则数据的双向绑定代理
@@ -191,6 +193,16 @@ const mockUrlPrefix = computed(() => {
   let prefix = cfg?.prefix || '';
   if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
   return `http://${ip}:${port}${prefix}`;
+});
+
+/**
+ * Mock 服务的完整地址（前缀 + 路径）
+ * 用于在地址行下方的预览文本中展示
+ */
+const mockUrlFull = computed(() => {
+  let path = rule.value.url || '';
+  if (path && !path.startsWith('/')) path = '/' + path;
+  return mockUrlPrefix.value + path;
 });
 
 // --- 真实地址计算（接口级别覆盖分组配置）---
@@ -497,35 +509,55 @@ onMounted(() => {
 
         <!-- ========== Tab 1: 接口定义面板 ========== -->
         <div v-show="mainTab === 'interface'" class="interface-panel">
-          <!-- Mock 地址行 -->
-          <div class="addr-row">
-            <span class="addr-tag mock">Mock</span>
-            <el-select v-model="rule.method" style="width: 90px" size="default">
-              <el-option value="GET" /><el-option value="POST" /><el-option value="PUT" /><el-option value="DELETE" />
-            </el-select>
-            <el-input v-model="rule.url" placeholder="/path" class="url-input">
-              <template #prepend>{{ mockUrlPrefix }}</template>
-            </el-input>
-            <el-button type="primary" plain :icon="CopyDocument" @click="$emit('copy')" title="复制Mock地址" />
+          <!-- 接口名称 + Mock 地址区 -->
+          <div class="addr-section">
+            <div class="addr-row">
+              <span class="addr-tag name">名称</span>
+              <el-input v-model="rule.name" placeholder="接口名称（选填）" class="url-input" />
+            </div>
           </div>
 
-          <!-- 真实地址行 -->
-          <div class="addr-row real-row">
-            <span class="addr-tag real">真实</span>
-            <el-select v-model="realProtocol" style="width: 78px" size="default">
-              <el-option label="http" value="http" />
-              <el-option label="https" value="https" />
-            </el-select>
-            <span class="addr-sep">://</span>
-            <el-input v-model="realHost" placeholder="主机地址" style="flex: 2; min-width: 80px" />
-            <span class="addr-sep">:</span>
-            <el-input v-model="realPort" placeholder="端口" style="width: 60px" />
-            <span class="addr-sep">/</span>
-            <el-input v-model="realPrefix" placeholder="前缀" style="flex: 1; min-width: 60px" />
-            <span class="addr-sep">/</span>
-            <el-input v-model="realPath" placeholder="路径" class="url-input" />
-            <el-button plain :icon="CopyDocument" @click="handleCopyRealUrl" title="复制真实地址" />
-            <el-button plain :icon="DocumentCopy" @click="handlePasteRealUrl" title="粘贴并解析URL" />
+          <!-- Mock 地址区 -->
+          <div class="addr-section">
+            <div class="addr-row">
+              <span class="addr-tag mock">Mock</span>
+              <el-select v-model="rule.method" style="width: 90px" size="default">
+                <el-option value="GET" /><el-option value="POST" /><el-option value="PUT" /><el-option value="DELETE" />
+              </el-select>
+              <el-input v-model="rule.url" placeholder="/api/path" class="url-input" />
+              <el-button type="primary" plain :icon="CopyDocument" @click="$emit('copy')" title="复制Mock地址" />
+            </div>
+            <div v-if="rule.url" class="addr-url-preview" @click="$emit('copy')" title="点击复制完整地址">
+              {{ mockUrlFull }}
+            </div>
+          </div>
+
+          <!-- 真实地址区 -->
+          <div class="addr-section">
+            <div class="addr-row">
+              <span class="addr-tag real">真实</span>
+              <el-input v-model="realPath" placeholder="/api/path" class="url-input" />
+              <el-button plain :icon="CopyDocument" @click="handleCopyRealUrl" title="复制真实地址" />
+              <el-button plain :icon="DocumentCopy" @click="handlePasteRealUrl" title="粘贴并解析URL" />
+              <el-button plain @click="showRealDetail = !showRealDetail" :type="showRealDetail ? 'primary' : ''" :title="showRealDetail ? '收起地址配置' : '展开地址配置'">
+                <el-icon :size="14"><component :is="showRealDetail ? ArrowDown : ArrowRight" /></el-icon>
+              </el-button>
+            </div>
+            <div v-if="showRealDetail" class="addr-detail-row">
+              <el-select v-model="realProtocol" style="width: 78px" size="small">
+                <el-option label="http" value="http" />
+                <el-option label="https" value="https" />
+              </el-select>
+              <span class="addr-sep">://</span>
+              <el-input v-model="realHost" placeholder="主机地址" size="small" style="flex: 2; min-width: 80px" />
+              <span class="addr-sep">:</span>
+              <el-input v-model="realPort" placeholder="端口" size="small" style="width: 56px" />
+              <span class="addr-sep">/</span>
+              <el-input v-model="realPrefix" placeholder="前缀" size="small" style="flex: 1; min-width: 60px" />
+            </div>
+            <div v-if="realUrlFull" class="addr-url-preview" @click="handleCopyRealUrl" title="点击复制完整地址">
+              {{ realUrlFull }}
+            </div>
           </div>
 
           <!-- 操作栏：保存按钮 -->
@@ -781,19 +813,42 @@ onMounted(() => {
 /* 接口面板 */
 .interface-panel { display: flex; flex-direction: column; height: 100%; }
 
-/* 地址行 */
+/* 地址区块：包裹输入行 + 预览行 */
+.addr-section {
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-hover);
+}
+/* 地址输入行 */
 .addr-row {
   padding: 6px 10px; display: flex; gap: 4px; align-items: center;
-  border-bottom: 1px solid var(--border-color); background: var(--bg-hover);
-  flex-wrap: wrap;
 }
 .addr-tag {
   padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; white-space: nowrap;
 }
+.addr-tag.name { background: #ecf5ff; color: #409EFF; }
 .addr-tag.mock { background: #e1f3d8; color: #67C23A; }
 .addr-tag.real { background: #fdf6ec; color: #E6A23C; }
+/* 完整地址预览行 */
+.addr-url-preview {
+  padding: 0 10px 6px 20px;
+  font-size: 11px;
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+.addr-url-preview:hover { color: var(--primary-color); }
+/* 真实地址展开配置行 */
+.addr-detail-row {
+  padding: 2px 10px 6px 20px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
 .addr-sep { color: var(--text-secondary); font-size: 13px; font-family: monospace; flex-shrink: 0; }
-.real-row { padding-top: 0; border-top: none; }
 .addr-actions { padding: 4px 10px; display: flex; justify-content: flex-end; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); }
 .url-input { flex: 1; }
 .sub-tabs { flex: 1; display: flex; flex-direction: column; }

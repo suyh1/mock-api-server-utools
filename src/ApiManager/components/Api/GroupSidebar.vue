@@ -119,10 +119,13 @@ const methodTagType = (method: string) => {
                 :class="{ active: currentRuleId === rule.id }"
                 @click="$emit('rule-select', rule)"
             >
-              <!-- 接口左侧：HTTP 方法标签 + 接口路径 -->
+              <!-- 接口左侧：HTTP 方法标签 + 接口名称/路径 -->
               <div class="rule-left">
                 <el-tag size="small" :type="methodTagType(rule.method)" effect="dark" class="method-tag">{{ rule.method }}</el-tag>
-                <span class="rule-url" :title="rule.url">{{ rule.url }}</span>
+                <div class="rule-info">
+                  <span v-if="rule.name" class="rule-name" :title="rule.name">{{ rule.name }}</span>
+                  <span class="rule-url" :class="{ 'is-sub': !!rule.name }" :title="rule.url">{{ rule.url }}</span>
+                </div>
               </div>
 
               <!-- 接口右侧操作区：删除按钮 + 启用/禁用开关 -->
@@ -233,12 +236,34 @@ const methodTagType = (method: string) => {
   font-weight: bold;
   border: none;
 }
+.rule-info {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.rule-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rule-item.active .rule-name {
+  color: var(--primary-color);
+}
 .rule-url {
   font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.rule-url.is-sub {
+  font-size: 10px;
+  opacity: 0.7;
 }
 .rule-item.active .rule-url {
   color: var(--primary-color);

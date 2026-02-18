@@ -143,7 +143,7 @@ const currentTitle = computed(() => {
               <p class="about-version">v1.4.0</p>
               <p class="about-desc">一款集 Mock 服务与接口管理于一体的 uTools 插件。支持多分组管理、自定义响应数据、真实接口代理调试、数据模板复用，以及多种响应类型（JSON、文件等）。</p>
               <div class="about-author">
-                <p>作者：suyuhao</p>
+                <p>作者：subeipo</p>
                 <p>邮箱：suyhem@163.com</p>
               </div>
             </div>
