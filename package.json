@@ -2,19 +2,35 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build && find dist -name \"*.map\" -type f -delete"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.2",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/language": "^6.12.1",
+    "@codemirror/lint": "^6.9.4",
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.39.14",
     "@element-plus/icons-vue": "^2.3.2",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "element-plus": "^2.13.2",
     "express": "^5.2.1",
-    "vue": "^3.5.13"
+    "vue": "^3.5.13",
+    "vue-codemirror": "^6.1.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.1",
+    "@types/body-parser": "^1.19.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.2.2",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "less": "^4.5.1",
+    "typescript": "^5.9.3",
     "utools-api-types": "^7.5.1",
-    "vite": "^6.0.11"
+    "vite": "^6.0.11",
+    "vue-tsc": "^3.2.4"
   }
 }

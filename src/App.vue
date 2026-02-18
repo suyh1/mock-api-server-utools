@@ -9,26 +9,26 @@ const route = ref('')
 const enterAction = ref({})
 
 onMounted(() => {
-  window.utools.onPluginEnter((action) => {
+  window.utools.onPluginEnter((action: any) => {
     route.value = action.code
     enterAction.value = action
   })
-  window.utools.onPluginOut((isKill) => {
+  window.utools.onPluginOut((isKill: any) => {
     route.value = ''
   })
 })
 </script>
 
 <template>
-  <template v-if="route === 'hello'">
-    <Hello :enterAction="enterAction"></Hello>
-  </template>
-  <template v-if="route === 'read'">
-    <Read :enterAction="enterAction"></Read>
-  </template>
-  <template v-if="route === 'write'">
-    <Write :enterAction="enterAction"></Write>
-  </template>
+<!--  <template v-if="route === 'hello'">-->
+<!--    <Hello :enterAction="enterAction"></Hello>-->
+<!--  </template>-->
+<!--  <template v-if="route === 'read'">-->
+<!--    <Read :enterAction="enterAction"></Read>-->
+<!--  </template>-->
+<!--  <template v-if="route === 'write'">-->
+<!--    <Write :enterAction="enterAction"></Write>-->
+<!--  </template>-->
   <template v-if="route === 'api-manager'">
     <ApiManager :enterAction="enterAction"></ApiManager>
   </template>

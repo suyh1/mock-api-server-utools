@@ -4,6 +4,7 @@
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "http": "^0.0.1-security"
+    "http": "^0.0.1-security",
+    "mockjs": "^1.1.0"
   }
 }
