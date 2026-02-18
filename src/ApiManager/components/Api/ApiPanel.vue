@@ -15,12 +15,15 @@
  * 6. 复制接口完整 URL 功能
  */
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue';
+import { ref, computed, onMounted, reactive, inject } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import GroupSidebar from './GroupSidebar.vue';
 import RuleEditor from './RuleEditor.vue';
 import ServiceConfigPanel from './ServiceConfig.vue';
 import type { MockGroup, MockRule, TestResultFile, TestResultMeta } from '@/types/mock';
+import { settingsKey } from '@/composables/useSettings';
+
+const appSettings = inject(settingsKey, null);
 
 /** 本机 IP 地址，用于拼接接口完整 URL */
 const localIp = ref('localhost');
@@ -149,9 +152,9 @@ const handleAddRule = (group: MockGroup) => {
   const newRule: MockRule = {
     id: Date.now(),
     active: true,
-    method: 'GET',
+    method: appSettings?.defaultMethod || 'GET',
     url: '/api/new',
-    delay: 0,
+    delay: appSettings?.defaultDelay ?? 0,
 
     // --- 新增：必须初始化这些字段 ---
     headers: [],        // 初始化为空数组

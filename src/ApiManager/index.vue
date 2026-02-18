@@ -16,30 +16,60 @@ import { ref, computed, provide } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ApiPanel from './components/Api/ApiPanel.vue';
-import TemplateManager from './components/Template/TemplateManager.vue'; // 引入新组件
+import TemplateManager from './components/Template/TemplateManager.vue';
 import ToolsPanel from './components/Tools/ToolsPanel.vue';
+import SettingsPanel from './components/Settings/SettingsPanel.vue';
+import { useSettings, settingsKey } from '@/composables/useSettings';
+
+/** 全局设置（持久化到 localStorage） */
+const settings = useSettings();
+provide(settingsKey, settings);
 
 /** 当前激活的导航标签页，默认为 'api'（接口管理） */
 const activeTab = ref('api');
 
-/** 深色模式开关 */
-const isDark = ref(false);
-// 【关键】向下层组件提供 isDark 状态
+const DARK_STORAGE_KEY = 'mock-api-dark-mode';
+
+/** 深色模式开关，从 localStorage 恢复 */
+const isDark = ref((() => {
+  try {
+    const raw = localStorage.getItem(DARK_STORAGE_KEY);
+    if (raw !== null) return JSON.parse(raw);
+  } catch {}
+  return false;
+})());
 provide('isDark', isDark);
 
+// 初始化时同步 HTML class
+if (isDark.value) {
+  document.documentElement.classList.add('dark');
+}
+
 /**
- * 切换深色/浅色主题
- * 同时更新 isDark 状态和 document.documentElement 的 class，
- * 以便全局 CSS（如 Element Plus 暗黑模式）能正确响应
+ * 应用深色模式状态到 DOM
  */
-const toggleTheme = () => {
-  isDark.value = !isDark.value;
+const applyDark = (dark: boolean) => {
+  isDark.value = dark;
   const html = document.documentElement;
-  if (isDark.value) {
+  if (dark) {
     html.classList.add('dark');
   } else {
     html.classList.remove('dark');
   }
+};
+
+/**
+ * 切换深色/浅色主题
+ */
+const toggleTheme = () => {
+  const newVal = !isDark.value;
+  applyDark(newVal);
+  localStorage.setItem(DARK_STORAGE_KEY, JSON.stringify(newVal));
+};
+
+/** SettingsPanel 通知主题变更 */
+const handleThemeChange = (dark: boolean) => {
+  applyDark(dark);
 };
 
 /** 根据当前激活标签页计算页面标题文本 */
@@ -101,9 +131,9 @@ const currentTitle = computed(() => {
             <ToolsPanel />
           </div>
 
-          <!-- 全局设置（占位） -->
-          <div v-if="activeTab === 'settings'" class="placeholder-module">
-            <el-empty description="全局设置" />
+          <!-- 全局设置 -->
+          <div v-if="activeTab === 'settings'" class="full-height-module">
+            <SettingsPanel @theme-change="handleThemeChange" />
           </div>
 
           <!-- 关于软件 -->

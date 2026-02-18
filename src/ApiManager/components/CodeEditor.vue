@@ -9,13 +9,14 @@
  * - 通过 v-model 双向绑定代码内容
  */
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
 import { Codemirror } from 'vue-codemirror';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { linter, lintGutter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
+import { settingsKey } from '@/composables/useSettings';
 
 // 接收 Props
 const props = defineProps<{
@@ -31,6 +32,8 @@ const props = defineProps<{
  * @event change            - 代码内容变更时触发，供父组件监听
  */
 const emit = defineEmits(['update:modelValue', 'change']);
+
+const settings = inject(settingsKey, null);
 
 /**
  * 可写计算属性 - 作为 v-model 的代理
@@ -58,10 +61,11 @@ const extensions = computed(() => {
   const exts = [
     // 基础功能：错误提示槽
     lintGutter(),
-    // 外观配置：让编辑器撑满容器
+    // 外观配置：让编辑器撑满容器，应用字体大小
     EditorView.theme({
       "&": { height: "100%" },
-      ".cm-scroller": { overflow: "auto" }
+      ".cm-scroller": { overflow: "auto" },
+      ".cm-content, .cm-gutters": { fontSize: `${settings?.editorFontSize ?? 13}px` }
     })
   ];
 
@@ -106,7 +110,7 @@ const extensions = computed(() => {
         :style="{ height: '100%' }"
         :autofocus="false"
         :indent-with-tab="true"
-        :tab-size="2"
+        :tab-size="settings?.editorTabSize ?? 2"
         :extensions="extensions"
     />
   </div>

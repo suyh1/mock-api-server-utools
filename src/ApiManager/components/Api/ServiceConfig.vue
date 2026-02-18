@@ -10,10 +10,11 @@
  * - 实时预览真实接口的完整 URL
  */
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed, onMounted, inject } from 'vue';
 import { VideoPlay, SwitchButton, CircleCheck, Warning } from '@element-plus/icons-vue';
 import type { MockGroup, ServiceConfig } from '@/types/mock';
 import { ElMessage } from 'element-plus';
+import { settingsKey } from '@/composables/useSettings';
 
 /**
  * 组件属性
@@ -32,6 +33,8 @@ const emit = defineEmits<{
   (e: 'update:group', group: MockGroup): void;
   (e: 'save'): void;
 }>();
+
+const appSettings = inject(settingsKey, null);
 
 /** 本机 IP 地址，用于拼接服务访问链接 */
 const localIp = ref('localhost');
@@ -95,8 +98,8 @@ onMounted(async () => {
 watch(() => props.group, async (newGroup) => {
   if (newGroup) {
     formData.value = {
-      port: newGroup.config?.port || 3888, // 默认 3888
-      prefix: newGroup.config?.prefix || '',
+      port: newGroup.config?.port || appSettings?.defaultPort || 3888,
+      prefix: newGroup.config?.prefix ?? appSettings?.defaultPrefix ?? '',
       running: false,
       realProtocol: newGroup.config?.realProtocol || 'http',
       realHost: newGroup.config?.realHost || '',
