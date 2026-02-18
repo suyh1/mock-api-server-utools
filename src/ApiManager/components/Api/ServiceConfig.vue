@@ -355,8 +355,8 @@ const handleStop = async () => {
 <style scoped>
 /* 保持原有样式，此处省略 */
 .config-container { padding: 0; height: 100%; display: flex; flex-direction: column; overflow-y: auto; }
-.config-header { padding: 20px 24px; border-bottom: 1px solid var(--border-color); font-size: 16px; font-weight: 600; color: #409EFF; }
-.config-card { padding: 40px; max-width: 600px; display: flex; flex-direction: column; gap: 24px; }
+.config-header { padding: 12px 20px; border-bottom: 1px solid var(--border-color); font-size: 15px; font-weight: 600; color: #409EFF; }
+.config-card { padding: 24px; max-width: 600px; display: flex; flex-direction: column; gap: 18px; }
 .form-row { display: flex; align-items: center; }
 .form-row label { width: 100px; color: var(--text-primary); font-size: 14px; }
 .status-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 4px; background-color: #FDE2E2; color: #F56C6C; font-size: 14px; font-weight: 500; }

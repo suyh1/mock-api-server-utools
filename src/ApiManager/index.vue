@@ -69,7 +69,7 @@ const currentTitle = computed(() => {
       <header class="app-header">
         <div class="header-left">
           <div class="avatar-container">
-            <el-avatar :size="28" :icon="UserFilled" class="user-avatar" />
+            <el-avatar :size="24" :icon="UserFilled" class="user-avatar" />
           </div>
           <span class="page-title">{{ currentTitle }}</span>
         </div>
@@ -171,19 +171,18 @@ const currentTitle = computed(() => {
 
 /* Header 样式 */
 .app-header {
-  height: 56px; /* 稍微调低一点，更精致 */
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px; /* 增加两边留白 */
+  padding: 0 16px;
   flex-shrink: 0;
-  /* 关键：不需要背景色，透出 app-frame 的背景 */
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .user-avatar {
@@ -219,7 +218,7 @@ const currentTitle = computed(() => {
 /* 内容包装器 */
 .content-wrapper {
   flex: 1;
-  padding: 0 16px 16px 4px; /* 右下留白，左侧稍微留点缝隙 */
+  padding: 0 10px 10px 4px;
   overflow: hidden;
   display: flex;
 }
@@ -228,9 +227,9 @@ const currentTitle = computed(() => {
 .content-card {
   flex: 1;
   background-color: var(--bg-card);
-  border-radius: 12px; /* 优雅的圆角 */
+  border-radius: 10px;
   box-shadow: var(--shadow-card);
-  border: 1px solid var(--border-color); /* 极细边框增加精致感 */
+  border: 1px solid var(--border-color);
   overflow: hidden;
   display: flex;
   flex-direction: column;

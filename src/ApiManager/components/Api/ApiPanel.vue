@@ -449,6 +449,42 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
   cacheCurrentResult();
 };
 
+// --- 侧边栏拖拽调整宽度 ---
+
+/** 侧边栏宽度（像素），默认 220px */
+const sidebarWidth = ref(220);
+/** 侧边栏最小宽度 */
+const SIDEBAR_MIN = 160;
+/** 侧边栏最大宽度 */
+const SIDEBAR_MAX = 400;
+/** 是否正在拖拽 */
+const isDragging = ref(false);
+
+/**
+ * 拖拽开始：记录初始位置，绑定 mousemove/mouseup 事件
+ */
+function onDragStart(e: MouseEvent) {
+  e.preventDefault();
+  isDragging.value = true;
+  const startX = e.clientX;
+  const startWidth = sidebarWidth.value;
+
+  const onMouseMove = (ev: MouseEvent) => {
+    const delta = ev.clientX - startX;
+    const newWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + delta));
+    sidebarWidth.value = newWidth;
+  };
+
+  const onMouseUp = () => {
+    isDragging.value = false;
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  };
+
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
+}
+
 /**
  * 组件挂载生命周期
  * 1. 从 window.services 获取本机 IP 和服务器地址
@@ -468,55 +504,109 @@ onMounted(() => {
 
 <template>
   <!-- 主面板容器：全高布局 -->
-  <el-container class="full-height">
-    <!-- 左侧：分组侧边栏，展示分组和接口树形列表 -->
-    <GroupSidebar
-        :groups="groups"
-        :currentRuleId="currentRuleId"
-        @group-add="handleAddGroup"
-        @group-rename="handleRenameGroup"
-        @group-delete="handleDeleteGroup"
-        @group-config="handleGroupConfig"
-        @rule-add="handleAddRule"
-        @rule-select="handleSelectRule"
-        @rule-toggle="handleToggleRule"
-        @rule-delete="handleDeleteRule"
-    />
+  <div class="api-panel" :class="{ 'is-dragging': isDragging }">
+    <!-- 左侧：分组侧边栏，宽度可拖拽调整 -->
+    <div class="sidebar-wrapper" :style="{ width: sidebarWidth + 'px' }">
+      <GroupSidebar
+          :groups="groups"
+          :currentRuleId="currentRuleId"
+          @group-add="handleAddGroup"
+          @group-rename="handleRenameGroup"
+          @group-delete="handleDeleteGroup"
+          @group-config="handleGroupConfig"
+          @rule-add="handleAddRule"
+          @rule-select="handleSelectRule"
+          @rule-toggle="handleToggleRule"
+          @rule-delete="handleDeleteRule"
+      />
+      <!-- 拖拽分隔条 -->
+      <div class="resize-handle" @mousedown="onDragStart"></div>
+    </div>
 
     <!-- 右侧内容区域：根据状态显示不同面板 -->
+    <div class="main-content">
+      <!-- 服务配置面板：当选中分组配置时显示 -->
+      <ServiceConfigPanel
+          v-if="configGroupId"
+          :group="groups.find(g => g.id === configGroupId)!"
+          @update:group="handleUpdateGroup"
+          @save="saveData"
+      />
 
-    <!-- 服务配置面板：当选中分组配置时显示 -->
-    <ServiceConfigPanel
-        v-if="configGroupId"
-        :group="groups.find(g => g.id === configGroupId)!"
-        @update:group="handleUpdateGroup"
-        @save="saveData"
-    />
+      <!-- 接口编辑器：当选中具体接口时显示 -->
+      <RuleEditor
+          v-else-if="currentRuleId"
+          v-model="editingRule"
+          :testResult="testResult"
+          :testResultFile="testResultFile"
+          :testResultMeta="testResultMeta"
+          :hasSelection="true"
+          :groupConfig="currentGroupConfig"
+          :localIp="localIp"
+          @save="handleSaveRule"
+          @copy="handleCopyCurrentUrl"
+          @test="handleRunTest"
+      />
 
-    <!-- 接口编辑器：当选中具体接口时显示 -->
-    <RuleEditor
-        v-else-if="currentRuleId"
-        v-model="editingRule"
-        :testResult="testResult"
-        :testResultFile="testResultFile"
-        :testResultMeta="testResultMeta"
-        :hasSelection="true"
-        :groupConfig="currentGroupConfig"
-        :localIp="localIp"
-        @save="handleSaveRule"
-        @copy="handleCopyCurrentUrl"
-        @test="handleRunTest"
-    />
-
-    <!-- 空状态提示：未选中任何接口或分组配置时显示 -->
-    <el-main v-else class="empty-container">
-      <el-empty description="请选择接口或配置服务" />
-    </el-main>
-
-  </el-container>
+      <!-- 空状态提示：未选中任何接口或分组配置时显示 -->
+      <div v-else class="empty-container">
+        <el-empty description="请选择接口或配置服务" />
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.full-height { height: 100%; overflow: hidden; }
-.empty-container { display: flex; justify-content: center; align-items: center; height: 100%; background: var(--bg-card); }
+.api-panel {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 拖拽时禁用文本选择和 iframe 指针事件 */
+.api-panel.is-dragging {
+  user-select: none;
+  cursor: col-resize;
+}
+
+/* 侧边栏容器：包含 GroupSidebar + 拖拽条 */
+.sidebar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  height: 100%;
+}
+
+/* 拖拽分隔条 */
+.resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+.resize-handle:hover,
+.api-panel.is-dragging .resize-handle {
+  background-color: var(--primary-color);
+  opacity: 0.4;
+}
+
+/* 右侧主内容区 */
+.main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.empty-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  background: var(--bg-card);
+}
 </style>

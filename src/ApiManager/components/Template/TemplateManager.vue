@@ -317,7 +317,7 @@ onMounted(loadTemplates);
 .subtitle { font-size: 12px; color: var(--text-secondary); }
 
 .template-list { flex: 1; overflow-y: auto; padding: 20px; }
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 
 .template-card {
   background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px;

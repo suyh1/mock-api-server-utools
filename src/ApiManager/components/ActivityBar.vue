@@ -72,26 +72,25 @@ const bottomItems: NavItem[] = [
 
 <style scoped>
 .activity-bar {
-  width: 72px; /* 稍微宽一点点 */
+  width: 52px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 16px 0;
+  padding: 10px 0;
   flex-shrink: 0;
-  /* 关键：背景透明，透出 app-frame 的颜色 */
   background: transparent;
 }
 
 .nav-item {
-  position: relative; /* 为了定位指示条 */
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 60px;
-  width: 56px;
-  margin: 4px auto; /* 居中 */
-  border-radius: 12px; /* 方圆形按钮 */
+  height: 48px;
+  width: 42px;
+  margin: 2px auto;
+  border-radius: 10px;
   cursor: pointer;
   color: var(--text-secondary);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -110,17 +109,17 @@ const bottomItems: NavItem[] = [
 /* 选中时的指示条（左侧小竖条） */
 .active-indicator {
   position: absolute;
-  left: -8px; /* 在 Bar 的边缘 */
-  width: 4px;
-  height: 24px;
+  left: -6px;
+  width: 3px;
+  height: 20px;
   background-color: var(--primary-color);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 3px 3px 0;
 }
 
 .nav-label {
   font-size: 10px;
-  margin-top: 4px;
+  margin-top: 2px;
   font-weight: 500;
-  transform: scale(0.9);
+  transform: scale(0.85);
 }
 </style>

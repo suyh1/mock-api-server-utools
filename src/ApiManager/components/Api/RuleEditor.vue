@@ -512,16 +512,16 @@ onMounted(() => {
           <!-- 真实地址行 -->
           <div class="addr-row real-row">
             <span class="addr-tag real">真实</span>
-            <el-select v-model="realProtocol" style="width: 82px" size="default">
+            <el-select v-model="realProtocol" style="width: 78px" size="default">
               <el-option label="http" value="http" />
               <el-option label="https" value="https" />
             </el-select>
             <span class="addr-sep">://</span>
-            <el-input v-model="realHost" placeholder="主机地址" style="width: 150px" />
+            <el-input v-model="realHost" placeholder="主机地址" style="flex: 2; min-width: 80px" />
             <span class="addr-sep">:</span>
-            <el-input v-model="realPort" placeholder="端口" style="width: 70px" />
+            <el-input v-model="realPort" placeholder="端口" style="width: 60px" />
             <span class="addr-sep">/</span>
-            <el-input v-model="realPrefix" placeholder="前缀" style="width: 100px" />
+            <el-input v-model="realPrefix" placeholder="前缀" style="flex: 1; min-width: 60px" />
             <span class="addr-sep">/</span>
             <el-input v-model="realPath" placeholder="路径" class="url-input" />
             <el-button plain :icon="CopyDocument" @click="handleCopyRealUrl" title="复制真实地址" />
@@ -624,7 +624,7 @@ onMounted(() => {
             <!-- 基础模式下的响应类型（Content-Type）选择器 -->
             <div v-if="rule.responseMode === 'basic'" class="type-select">
               <span class="label">响应类型：</span>
-              <el-select v-model="rule.responseType" style="width: 220px" filterable>
+              <el-select v-model="rule.responseType" style="width: 180px" filterable>
                 <el-option-group v-for="group in ['文本', '文件', '其他']" :key="group" :label="group">
                   <el-option v-for="t in contentTypes.filter(c => c.group === group)" :key="t.value" :label="t.label" :value="t.value" />
                 </el-option-group>
@@ -649,7 +649,7 @@ onMounted(() => {
               <el-button type="warning" plain @click="handleSaveAsTemplate">存为模板</el-button>
             </div>
 
-            <el-button type="success" :icon="Check" @click="$emit('save')" style="margin-left: auto">保存配置</el-button>
+            <el-button type="success" :icon="Check" @click="$emit('save')">保存配置</el-button>
           </div>
 
           <div class="editor-area">
@@ -769,7 +769,7 @@ onMounted(() => {
 /* 顶级 Tab */
 .main-tabs-header { display: flex; border-bottom: 1px solid var(--border-color); background: var(--bg-frame); }
 .tab-item {
-  padding: 12px 24px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-secondary);
+  padding: 8px 20px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-secondary);
   border-bottom: 2px solid transparent; transition: all 0.2s;
 }
 .tab-item:hover { color: var(--primary-color); }
@@ -783,8 +783,9 @@ onMounted(() => {
 
 /* 地址行 */
 .addr-row {
-  padding: 8px 12px; display: flex; gap: 6px; align-items: center;
+  padding: 6px 10px; display: flex; gap: 4px; align-items: center;
   border-bottom: 1px solid var(--border-color); background: var(--bg-hover);
+  flex-wrap: wrap;
 }
 .addr-tag {
   padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; white-space: nowrap;
@@ -793,34 +794,35 @@ onMounted(() => {
 .addr-tag.real { background: #fdf6ec; color: #E6A23C; }
 .addr-sep { color: var(--text-secondary); font-size: 13px; font-family: monospace; flex-shrink: 0; }
 .real-row { padding-top: 0; border-top: none; }
-.addr-actions { padding: 6px 12px; display: flex; justify-content: flex-end; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); }
+.addr-actions { padding: 4px 10px; display: flex; justify-content: flex-end; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); }
 .url-input { flex: 1; }
 .sub-tabs { flex: 1; display: flex; flex-direction: column; }
-:deep(.el-tabs__header) { margin: 0; padding: 0 16px; }
-:deep(.el-tabs__content) { flex: 1; overflow: auto; padding: 16px; }
+:deep(.el-tabs__header) { margin: 0; padding: 0 12px; }
+:deep(.el-tabs__content) { flex: 1; overflow: auto; padding: 12px; }
 
 /* Body 面板 */
 .body-panel { height: 100%; display: flex; flex-direction: column; }
 
 /* 响应面板 */
 .response-panel { display: flex; flex-direction: column; height: 100%; }
-.mode-bar { padding: 12px 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 20px; background: var(--bg-hover); }
-.mode-switch, .type-select { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); }
+.mode-bar { padding: 8px 12px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; background: var(--bg-hover); flex-wrap: wrap; }
+.mode-switch, .type-select { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-primary); }
+.mode-switch .label, .type-select .label { white-space: nowrap; }
 .editor-area { flex: 1; padding: 0; overflow: hidden; }
 
 /* 高级模式容器 */
 .advanced-editor { display: flex; flex-direction: column; }
 .script-hint {
-  padding: 8px 16px; background: #e6f7ff; color: #1890ff; font-size: 12px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #91d5ff; flex-shrink: 0;
+  padding: 6px 12px; background: #e6f7ff; color: #1890ff; font-size: 12px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #91d5ff; flex-shrink: 0;
 }
 /* 文件选择器 */
 .file-picker-area {
-  flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px;
+  flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px;
 }
 .file-picker-content {
-  display: flex; flex-direction: column; align-items: center; gap: 20px;
-  padding: 40px; border: 2px dashed var(--border-color); border-radius: 12px;
-  background: var(--bg-hover); min-width: 400px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  padding: 24px; border: 2px dashed var(--border-color); border-radius: 12px;
+  background: var(--bg-hover); min-width: 280px; max-width: 100%;
 }
 .file-info {
   display: flex; align-items: center; gap: 12px; width: 100%;
@@ -838,9 +840,9 @@ onMounted(() => {
 /* 日志面板 */
 .logs-panel { padding: 0; height: 100%; display: flex; flex-direction: column; }
 .test-panel { flex: 1; display: flex; flex-direction: column; overflow: auto; }
-.panel-header { padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); flex-shrink: 0; position: sticky; top: 0; z-index: 1; }
+.panel-header { padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); flex-shrink: 0; position: sticky; top: 0; z-index: 1; }
 .test-actions { display: flex; gap: 8px; }
-.test-result { min-height: 200px; flex: 1; overflow: hidden; padding: 0; border: none; }
+.test-result { min-height: 120px; flex: 1; overflow: hidden; padding: 0; border: none; }
 
 /* 请求元信息 */
 .meta-section { flex-shrink: 0; border-bottom: 1px solid var(--border-color); }
@@ -877,5 +879,5 @@ onMounted(() => {
 .file-download-size { font-size: 12px; color: var(--text-secondary); }
 .file-download-hint { font-size: 12px; color: #E6A23C; font-style: italic; }
 
-.template-actions { display: flex; gap: 10px; margin-left: 20px; border-left: 1px solid var(--border-color); padding-left: 20px; }
+.template-actions { display: flex; gap: 8px; margin-left: auto; }
 </style>

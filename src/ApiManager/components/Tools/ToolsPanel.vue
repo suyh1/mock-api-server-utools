@@ -455,7 +455,6 @@ function capitalize(s: string) {
       </div>
 
       <!-- UUID 生成工具 -->
-      <!-- UUID 生成工具 -->
       <div v-if="activeTool === 'uuid'" class="tool-area">
         <h3>UUID 生成</h3>
         <!-- 左侧数量选择 + 右侧结果展示 -->

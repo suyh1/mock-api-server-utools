@@ -77,10 +77,10 @@ const methodTagType = (method: string) => {
 
 <template>
   <!-- 侧边栏容器 -->
-  <el-aside width="300px" class="inner-sidebar">
+  <el-aside :width="'100%'" class="inner-sidebar">
     <!-- 顶部标题栏：标题 + 新建分组按钮 -->
     <div class="inner-header">
-      <span class="title">Mock 接口列表</span>
+      <span class="title">接口列表</span>
       <el-button type="primary" size="small" :icon="Plus" circle @click="$emit('group-add')" title="新建分组" />
     </div>
     <!-- 可滚动的分组列表区域 -->
@@ -162,9 +162,11 @@ const methodTagType = (method: string) => {
   flex-direction: column;
   background-color: transparent;
   height: 100%;
+  overflow: hidden;
+  flex: 1;
 }
 .inner-header {
-  height: 50px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
