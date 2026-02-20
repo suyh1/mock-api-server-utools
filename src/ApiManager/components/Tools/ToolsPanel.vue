@@ -358,7 +358,7 @@ function generateUUID() {
   const results: string[] = [];
   for (let i = 0; i < uuidCount.value; i++) {
     if (uuidType.value === 'uuid') {
-      let id = crypto.randomUUID();
+      let id: string = crypto.randomUUID();
       if (uuidFormat.value === 'upper') id = id.toUpperCase();
       else if (uuidFormat.value === 'nodash') id = id.replace(/-/g, '');
       else if (uuidFormat.value === 'braces') id = `{${id}}`;
@@ -1294,7 +1294,9 @@ const _words = ['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipis
 const _cnWords = '天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜海咸河淡鳞潜羽翔龙师火帝鸟官人皇始制文字乃服衣裳推位让国有虞陶唐';
 
 function randInt(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-function randItem<T>(arr: T[] | string): T | string { return arr[randInt(0, arr.length - 1)]; }
+function randItem(arr: string): string;
+function randItem<T>(arr: T[]): T;
+function randItem(arr: any[] | string): any { return arr[randInt(0, arr.length - 1)]; }
 function randPhone() { return '1' + randItem('3456789') + Array.from({ length: 9 }, () => randInt(0, 9)).join(''); }
 function randDate(start = 2020, end = 2025) {
   const y = randInt(start, end), m = randInt(1, 12), d = randInt(1, 28);
@@ -1525,7 +1527,7 @@ const encKey = ref('');
 const encOutput = ref('');
 const encError = ref('');
 
-async function deriveKey(password: string, salt: Uint8Array, algo: string): Promise<CryptoKey> {
+async function deriveKey(password: string, salt: BufferSource, algo: string): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
@@ -1536,8 +1538,9 @@ async function deriveKey(password: string, salt: Uint8Array, algo: string): Prom
   );
 }
 
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+function arrayBufferToBase64(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return btoa(String.fromCharCode(...bytes));
 }
 function base64ToArrayBuffer(b64: string): ArrayBuffer {
   const bin = atob(b64);
@@ -1591,7 +1594,6 @@ function generateEncKey() {
 /* ==================== Unicode 工具 ==================== */
 
 const uniInput = ref('');
-const uniMode = ref<'analyze' | 'escape' | 'unescape'>('analyze');
 const uniOutput = ref('');
 
 const uniAnalysis = computed(() => {
@@ -3892,7 +3894,7 @@ onMounted(() => {
               <el-button v-if="docResult" @click="downloadDoc">下载 .md</el-button>
             </div>
             <div v-if="docResult" class="doc-preview">
-              <CodeEditor :modelValue="docResult" language="markdown" :readOnly="true" :isDark="isDark" />
+              <CodeEditor :modelValue="docResult" :readOnly="true" :isDark="isDark" />
             </div>
           </template>
 
