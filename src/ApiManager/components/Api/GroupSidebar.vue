@@ -219,6 +219,7 @@ if (typeof document !== 'undefined') {
               <el-tooltip :content="group.description" placement="right" :disabled="!group.description" :show-after="500">
                 <div class="group-title-content">
                   <span class="group-name">{{ group.name }}</span>
+                  <span class="group-count">({{ group.children.length }})</span>
                   <div class="group-btns">
                     <el-button link type="info" @click.stop="$emit('group-config', group)" title="服务配置">
                       <el-icon><Setting /></el-icon>
@@ -242,7 +243,7 @@ if (typeof document !== 'undefined') {
               v-for="rule in group.children"
               :key="rule.id"
               class="rule-item"
-              :class="{ active: currentRuleId === rule.id, 'drop-target': dropTargetId === rule.id }"
+              :class="{ active: currentRuleId === rule.id, 'drop-target': dropTargetId === rule.id, disabled: !rule.active }"
               draggable="true"
               @click="$emit('rule-select', rule)"
               @contextmenu="onRuleContextMenu($event, group, rule)"
@@ -266,12 +267,14 @@ if (typeof document !== 'undefined') {
                 <el-switch v-model="rule.active" size="small" @change="$emit('rule-toggle')" @click.stop />
               </div>
             </div>
-            <div v-if="!group.children.length" class="empty-tip">暂无接口</div>
+            <div v-if="!group.children.length" class="empty-tip">暂无接口，点击 + 新建</div>
           </el-collapse-item>
         </el-collapse>
 
         <!-- 搜索无结果 -->
-        <div v-if="searchKeyword && !filteredGroups.length" class="empty-tip">未找到匹配的接口</div>
+        <div v-if="searchKeyword && !filteredGroups.length" class="empty-tip">未找到匹配的接口，试试调整关键词</div>
+        <!-- 分组为空 -->
+        <div v-if="!searchKeyword && !filteredGroups.length" class="empty-tip">暂无分组，点击右上角 + 创建</div>
       </div>
     </el-scrollbar>
 
@@ -366,6 +369,13 @@ if (typeof document !== 'undefined') {
 .group-title-content:hover .group-btns {
   display: flex;
 }
+.group-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 400;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
 .rule-item {
   display: flex;
   align-items: center;
@@ -384,6 +394,12 @@ if (typeof document !== 'undefined') {
 .rule-item.active {
   background: var(--primary-bg);
   border-color: transparent;
+}
+.rule-item.disabled {
+  opacity: 0.5;
+}
+.rule-item.disabled .rule-url {
+  text-decoration: line-through;
 }
 .rule-item.drop-target {
   border-color: var(--primary-color);

@@ -35,6 +35,8 @@ const props = defineProps<{
   hasSelection: boolean;
   groupConfig?: ServiceConfig;
   localIp?: string;
+  groupName?: string;       // 所属分组名称（面包屑用）
+  isTesting?: boolean;      // 是否正在请求中
 }>();
 
 /**
@@ -53,6 +55,18 @@ const emit = defineEmits<{
 
 // 【关键】注入全局的深色模式状态 (由 index.vue 提供)
 const isDark = inject('isDark', ref(false));
+
+/** 保存按钮反馈状态 */
+const saveSuccess = ref(false);
+const handleSave = () => {
+  if (!rule.value.url?.trim()) {
+    ElMessage.warning('请输入接口路径');
+    return;
+  }
+  emit('save');
+  saveSuccess.value = true;
+  setTimeout(() => { saveSuccess.value = false; }, 2000);
+};
 
 /** 顶级 Tab 当前激活项：'interface' | 'response' | 'logs' */
 // 顶级 Tab：接口 | 响应数据 | 请求日志
@@ -491,6 +505,13 @@ onMounted(() => {
     <!-- 已选中接口时显示编辑器 -->
     <div v-if="hasSelection" class="editor-layout">
 
+      <!-- 面包屑导航 -->
+      <div v-if="groupName" class="breadcrumb">
+        <span class="breadcrumb-group">{{ groupName }}</span>
+        <span class="breadcrumb-sep">/</span>
+        <span class="breadcrumb-rule">{{ rule.name || rule.url || '未命名接口' }}</span>
+      </div>
+
       <!-- ==================== 顶级 Tab 导航栏 ==================== -->
       <div class="main-tabs-header">
         <div
@@ -572,7 +593,7 @@ onMounted(() => {
               <span v-if="rule.createdAt" title="创建时间">创建: {{ formatTime(rule.createdAt) }}</span>
               <span v-if="rule.updatedAt" title="更新时间">更新: {{ formatTime(rule.updatedAt) }}</span>
             </div>
-            <el-button type="success" :icon="Check" @click="$emit('save')">保存</el-button>
+            <el-button :type="saveSuccess ? 'info' : 'success'" :icon="Check" @click="handleSave">{{ saveSuccess ? '已保存 ✓' : '保存' }}</el-button>
           </div>
 
           <!-- 接口定义子 Tab：请求头 / 请求参数 / 请求体 / 响应头 -->
@@ -691,7 +712,7 @@ onMounted(() => {
               <el-button type="warning" plain @click="handleSaveAsTemplate">存为模板</el-button>
             </div>
 
-            <el-button type="success" :icon="Check" @click="$emit('save')">保存配置</el-button>
+            <el-button :type="saveSuccess ? 'info' : 'success'" :icon="Check" @click="handleSave">{{ saveSuccess ? '已保存 ✓' : '保存配置' }}</el-button>
           </div>
 
           <div class="editor-area">
@@ -745,8 +766,8 @@ onMounted(() => {
             <div class="panel-header">
               <span>发送请求</span>
               <div class="test-actions">
-                <el-button type="primary" size="small" :icon="VideoPlay" @click="$emit('test', 'mock')">请求Mock</el-button>
-                <el-button type="warning" size="small" :icon="VideoPlay" @click="$emit('test', 'real')" :disabled="!realUrlFull">请求真实接口</el-button>
+                <el-button type="primary" size="small" :icon="VideoPlay" @click="$emit('test', 'mock')" :loading="isTesting">{{ isTesting ? '请求中...' : '请求Mock' }}</el-button>
+                <el-button type="warning" size="small" :icon="VideoPlay" @click="$emit('test', 'real')" :disabled="!realUrlFull || isTesting" :loading="isTesting">{{ isTesting ? '请求中...' : '请求真实接口' }}</el-button>
               </div>
             </div>
 
@@ -953,5 +974,31 @@ onMounted(() => {
   font-size: 11px;
   color: var(--text-secondary);
   margin-right: auto;
+}
+
+/* 面包屑导航 */
+.breadcrumb {
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.breadcrumb-group {
+  color: var(--text-secondary);
+}
+.breadcrumb-sep {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+.breadcrumb-rule {
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

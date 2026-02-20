@@ -203,7 +203,18 @@ const handleRenameGroup = (group: MockGroup) => {
   }).catch(() => {});
 };
 /** 删除分组：确认后删除分组及其下所有接口，若当前选中接口在该分组内则清空选中状态 */
-const handleDeleteGroup = (idx: number) => { ElMessageBox.confirm('确定删除该分组及其下所有接口吗？', '警告', { type: 'warning' }).then(() => { if (groups.value[idx].children.some(r => r.id === currentRuleId.value)) { currentRuleId.value = null; editingRule.value = {}; } groups.value.splice(idx, 1); saveData(); }).catch(() => {}); };
+const handleDeleteGroup = (idx: number) => {
+  const group = groups.value[idx];
+  const count = group?.children?.length || 0;
+  const msg = count > 0
+    ? `确定删除分组「${group.name}」及其下的 ${count} 个接口吗？`
+    : `确定删除空分组「${group.name}」吗？`;
+  ElMessageBox.confirm(msg, '警告', { type: 'warning' }).then(() => {
+    if (group.children.some(r => r.id === currentRuleId.value)) { currentRuleId.value = null; editingRule.value = {}; }
+    groups.value.splice(idx, 1);
+    saveData();
+  }).catch(() => {});
+};
 /** 进入分组配置：设置 configGroupId 以显示服务配置面板 */
 const handleGroupConfig = (group: MockGroup) => { configGroupId.value = group.id; currentRuleId.value = null; };
 
@@ -406,6 +417,15 @@ const currentGroupConfig = computed(() => {
   return group?.config;
 });
 
+/** 当前选中接口所属分组名称（面包屑用） */
+const currentGroupName = computed(() => {
+  const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
+  return group?.name || '';
+});
+
+/** 是否正在请求中 */
+const isTesting = ref(false);
+
 /**
  * 构建真实接口的完整 URL
  * 优先使用接口级别的 realConfig 配置，缺省时回退到分组级别的配置
@@ -451,6 +471,7 @@ const buildRealUrl = () => {
  */
 // ... runTest 支持 mock 和 real 两种模式 ...
 const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
+  isTesting.value = true;
   testResult.value = '';
   testResultFile.value = null;
   testResultMeta.value = null;
@@ -571,6 +592,7 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
   } catch (e: any) {
     testResult.value = `Error: ${e.message}`;
   }
+  isTesting.value = false;
   cacheCurrentResult();
 };
 
@@ -680,6 +702,8 @@ onUnmounted(() => {
           :hasSelection="true"
           :groupConfig="currentGroupConfig"
           :localIp="localIp"
+          :groupName="currentGroupName"
+          :isTesting="isTesting"
           @save="handleSaveRule"
           @copy="handleCopyCurrentUrl"
           @test="handleRunTest"
@@ -687,7 +711,7 @@ onUnmounted(() => {
 
       <!-- 空状态提示：未选中任何接口或分组配置时显示 -->
       <div v-else class="empty-container">
-        <el-empty description="请选择接口或配置服务" />
+        <el-empty :description="groups.length ? '从左侧选择一个接口开始编辑，或点击分组的 ⚙ 配置服务' : '点击左上角 + 创建第一个分组'" />
       </div>
     </div>
   </div>
