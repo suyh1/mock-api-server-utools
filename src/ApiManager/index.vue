@@ -15,6 +15,7 @@
 import { ref, computed, provide } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
+import ProjectPanel from './components/Project/ProjectPanel.vue';
 import ApiPanel from './components/Api/ApiPanel.vue';
 import TemplateManager from './components/Template/TemplateManager.vue';
 import ToolsPanel from './components/Tools/ToolsPanel.vue';
@@ -75,6 +76,7 @@ const handleThemeChange = (dark: boolean) => {
 /** 根据当前激活标签页计算页面标题文本 */
 const currentTitle = computed(() => {
   const map: Record<string, string> = {
+    project: '项目管理',
     api: '接口管理',
     template: '数据模板',
     tools: '开发工具',
@@ -118,6 +120,9 @@ const currentTitle = computed(() => {
       <!-- 主内容区：根据 activeTab 条件渲染对应面板 -->
       <main class="content-wrapper">
         <div class="content-card">
+          <!-- 项目管理面板 -->
+          <ProjectPanel v-if="activeTab === 'project'" />
+
           <!-- 接口管理面板 -->
           <ApiPanel v-if="activeTab === 'api'" />
 

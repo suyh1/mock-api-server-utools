@@ -308,6 +308,33 @@ function checkPort(port) {
   });
 }
 
+/* ==================== 项目数据管理 ==================== */
+
+/** uTools 数据库中存储项目数据的键名 */
+const DB_PROJECT_KEY = 'mock_projects_v1';
+
+/**
+ * 从 uTools 数据库读取所有项目
+ * @returns {Array} 项目数组
+ */
+function getProjects() {
+  const doc = utools.db.get(DB_PROJECT_KEY);
+  return doc ? doc.data : [];
+}
+
+/**
+ * 将项目数据保存到 uTools 数据库
+ * @param {Array} projects - 项目数组
+ */
+function saveProjects(projects) {
+  const doc = utools.db.get(DB_PROJECT_KEY);
+  if (doc) {
+    utools.db.put({ _id: DB_PROJECT_KEY, data: projects, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: DB_PROJECT_KEY, data: projects });
+  }
+}
+
 /* ==================== 模板数据管理 ==================== */
 
 /** uTools 数据库中存储模板数据的键名 */
@@ -399,6 +426,49 @@ adminApp.post('/_admin/template/delete', (req, res) => {
   const templates = getTemplates().filter(t => t.id !== id);
   saveTemplates(templates);
   res.json({ success: true, data: templates });
+});
+
+/* -------------------- 项目管理 API -------------------- */
+
+/** GET /_admin/projects - 获取所有项目 */
+adminApp.get('/_admin/projects', (req, res) => {
+  res.json(getProjects());
+});
+
+/** POST /_admin/project/save - 保存或更新单个项目 */
+adminApp.post('/_admin/project/save', (req, res) => {
+  const project = req.body;
+  if (!project.name) {
+    return res.status(400).json({ error: 'Project name is required' });
+  }
+
+  const projects = getProjects();
+  const idx = projects.findIndex(p => p.id === project.id);
+  if (idx !== -1) {
+    projects[idx] = { ...projects[idx], ...project, id: projects[idx].id, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    projects.push({ ...project, id: now, createdAt: now, updatedAt: now });
+  }
+  saveProjects(projects);
+  res.json({ success: true, data: projects });
+});
+
+/** POST /_admin/project/delete - 删除指定项目，同时清除关联分组的 projectId */
+adminApp.post('/_admin/project/delete', (req, res) => {
+  const { id } = req.body;
+  const projects = getProjects().filter(p => p.id !== id);
+  saveProjects(projects);
+
+  // 清除关联分组的 projectId
+  const groups = getGroups();
+  let changed = false;
+  groups.forEach(g => {
+    if (g.projectId === id) { g.projectId = undefined; changed = true; }
+  });
+  if (changed) saveGroups(groups);
+
+  res.json({ success: true, data: projects });
 });
 
 /** 启动 Admin 管理服务器，监听所有网络接口 */

@@ -1,0 +1,100 @@
+/* ==================== 通用布局组件 ==================== */
+
+.tool-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.tool-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool-col label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.tool-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  align-items: center;
+}
+
+.tool-error {
+  color: #f56c6c;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.tool-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.tool-hint code {
+  color: var(--primary-color);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* ==================== 编辑器容器 ==================== */
+
+.editor-box {
+  flex: 1;
+  min-height: 0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.json-editors,
+.j2ts-editors {
+  height: 350px;
+}
+
+/* ==================== 预设标签 ==================== */
+
+.regex-presets {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.regex-presets > label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.regex-preset-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.regex-preset-tag {
+  padding: 4px 10px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+.regex-preset-tag:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  background: var(--primary-bg);
+}
+.preset-active {
+  color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  background: var(--primary-bg) !important;
+}
