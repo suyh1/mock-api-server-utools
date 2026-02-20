@@ -33,6 +33,8 @@ export interface MockRule {
     realUrl?: string;              // 兼容旧数据（废弃，改用 realConfig）
     realConfig?: RealUrlConfig;    // 接口级别的真实地址覆盖配置
     delay: number;
+    createdAt?: number;            // 创建时间
+    updatedAt?: number;            // 最后更新时间
 
     // --- 新增字段 ---
     headers: KeyValueItem[];       // 请求头校验
@@ -62,6 +64,7 @@ export interface ServiceConfig {
 export interface MockGroup {
     id: number;
     name: string;
+    description?: string;   // 分组描述
     projectId?: number;     // 所属项目 ID，undefined 表示"未分类"
     children: MockRule[];
     config?: ServiceConfig; // 分组的服务配置

@@ -15,7 +15,7 @@
  * 6. 复制接口完整 URL 功能
  */
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive, inject } from 'vue';
+import { ref, computed, onMounted, onUnmounted, reactive, inject } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import GroupSidebar from './GroupSidebar.vue';
 import RuleEditor from './RuleEditor.vue';
@@ -169,8 +169,39 @@ const saveData = async () => { try { await fetch(`${API_BASE.value}/_admin/rules
 
 /** 新建分组：弹出输入框，输入名称后添加到分组列表，自动关联当前项目 */
 const handleAddGroup = () => { ElMessageBox.prompt('请输入分组名称', '新建分组').then(({ value }: any) => { if (!value) return; groups.value.push({ id: Date.now(), name: value, projectId: currentProjectId.value ?? undefined, children: [] }); saveData(); }).catch(() => {}); };
-/** 重命名分组：弹出输入框，修改分组名称后保存 */
-const handleRenameGroup = (group: MockGroup) => { ElMessageBox.prompt('请输入新名称', '重命名', { inputValue: group.name }).then(({ value }: any) => { if (value) { group.name = value; saveData(); } }).catch(() => {}); };
+/** 重命名分组：弹出输入框，修改分组名称和描述后保存 */
+const handleRenameGroup = (group: MockGroup) => {
+  ElMessageBox({
+    title: '编辑分组',
+    message: `
+      <div style="margin-bottom:12px">
+        <label style="display:block;margin-bottom:4px;font-size:13px">分组名称</label>
+        <input id="__group_name" value="${group.name}" style="width:100%;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;box-sizing:border-box" />
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;font-size:13px">分组描述（可选）</label>
+        <input id="__group_desc" value="${group.description || ''}" placeholder="简要描述该分组" style="width:100%;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;box-sizing:border-box" />
+      </div>
+    `,
+    dangerouslyUseHTMLString: true,
+    confirmButtonText: '保存',
+    cancelButtonText: '取消',
+    showCancelButton: true,
+    beforeClose: (action, instance, done) => {
+      if (action === 'confirm') {
+        const nameEl = document.getElementById('__group_name') as HTMLInputElement;
+        const descEl = document.getElementById('__group_desc') as HTMLInputElement;
+        const name = nameEl?.value?.trim();
+        if (name) {
+          group.name = name;
+          group.description = descEl?.value?.trim() || undefined;
+          saveData();
+        }
+      }
+      done();
+    }
+  }).catch(() => {});
+};
 /** 删除分组：确认后删除分组及其下所有接口，若当前选中接口在该分组内则清空选中状态 */
 const handleDeleteGroup = (idx: number) => { ElMessageBox.confirm('确定删除该分组及其下所有接口吗？', '警告', { type: 'warning' }).then(() => { if (groups.value[idx].children.some(r => r.id === currentRuleId.value)) { currentRuleId.value = null; editingRule.value = {}; } groups.value.splice(idx, 1); saveData(); }).catch(() => {}); };
 /** 进入分组配置：设置 configGroupId 以显示服务配置面板 */
@@ -184,30 +215,26 @@ const handleGroupConfig = (group: MockGroup) => { configGroupId.value = group.id
  * @param group - 目标分组
  */
 const handleAddRule = (group: MockGroup) => {
+  const now = Date.now();
   const newRule: MockRule = {
-    id: Date.now(),
+    id: now,
     name: '',
     active: true,
     method: appSettings?.defaultMethod || 'GET',
     url: '/api/new',
     delay: appSettings?.defaultDelay ?? 0,
+    createdAt: now,
+    updatedAt: now,
 
-    // --- 新增：必须初始化这些字段 ---
-    headers: [],        // 初始化为空数组
-    params: [],         // 初始化为空数组
-    body: {             // 初始化默认 body 结构
-      type: 'none',
-      raw: '',
-      formData: []
-    },
+    headers: [],
+    params: [],
+    body: { type: 'none', raw: '', formData: [] },
 
-    // 初始化响应配置
     responseHeaders: [],
-    responseMode: 'basic',            // 默认基础模式
-    responseType: 'application/json', // 默认 JSON
-    responseBasic: '{\n  "code": 200,\n  "msg": "Hello World"\n}', // 默认内容
-    responseAdvanced: '',             // 高级模式脚本初始化为空字符串(Editor会处理模板)
-
+    responseMode: 'basic',
+    responseType: 'application/json',
+    responseBasic: '{\n  "code": 200,\n  "msg": "Hello World"\n}',
+    responseAdvanced: '',
   };
   group.children.push(newRule);
   handleSelectRule(newRule);
@@ -234,10 +261,10 @@ const handleToggleRule = () => { saveData(); };
  * 将编辑区的数据合并回原始分组数据中，并提交到后端
  */
 const handleSaveRule = () => {
-  // 规范化 URL 路径，确保以 / 开头
   if (editingRule.value.url && !editingRule.value.url.startsWith('/')) {
     editingRule.value.url = '/' + editingRule.value.url;
   }
+  editingRule.value.updatedAt = Date.now();
   for (const group of groups.value) {
     const idx = group.children.findIndex(r => r.id === currentRuleId.value);
     if (idx !== -1) {
@@ -312,6 +339,61 @@ const handleCopyCurrentUrl = () => {
 const handleUpdateGroup = (updatedGroup: MockGroup) => {
   const idx = groups.value.findIndex(g => g.id === updatedGroup.id);
   if (idx !== -1) groups.value[idx] = updatedGroup;
+};
+
+// --- 接口复制/移动/排序 ---
+
+/** 复制接口到目标分组 */
+const handleCopyRule = (rule: MockRule, targetGroupId: number) => {
+  const targetGroup = groups.value.find(g => g.id === targetGroupId);
+  if (!targetGroup) return;
+  const now = Date.now();
+  const copied: MockRule = { ...JSON.parse(JSON.stringify(rule)), id: now, createdAt: now, updatedAt: now };
+  targetGroup.children.push(copied);
+  saveData();
+  ElMessage.success(`已复制到「${targetGroup.name}」`);
+};
+
+/** 移动接口到目标分组 */
+const handleMoveRule = (rule: MockRule, sourceGroup: MockGroup, targetGroupId: number) => {
+  const targetGroup = groups.value.find(g => g.id === targetGroupId);
+  const srcGroup = groups.value.find(g => g.id === sourceGroup.id);
+  if (!targetGroup || !srcGroup) return;
+  const idx = srcGroup.children.findIndex(r => r.id === rule.id);
+  if (idx === -1) return;
+  const [moved] = srcGroup.children.splice(idx, 1);
+  targetGroup.children.push(moved);
+  if (currentRuleId.value === rule.id) {
+    currentRuleId.value = null;
+    editingRule.value = {};
+  }
+  saveData();
+  ElMessage.success(`已移动到「${targetGroup.name}」`);
+};
+
+/** 拖拽排序接口 */
+const handleReorderRule = (group: MockGroup, fromIdx: number, toIdx: number) => {
+  const realGroup = groups.value.find(g => g.id === group.id);
+  if (!realGroup) return;
+  const [item] = realGroup.children.splice(fromIdx, 1);
+  realGroup.children.splice(toIdx, 0, item);
+  saveData();
+};
+
+// --- 快捷键 ---
+
+const sidebarRef = ref<InstanceType<typeof GroupSidebar> | null>(null);
+
+const handleKeydown = (e: KeyboardEvent) => {
+  const isMeta = e.ctrlKey || e.metaKey;
+  if (isMeta && e.key === 's') {
+    e.preventDefault();
+    if (currentRuleId.value) handleSaveRule();
+  }
+  if (isMeta && e.key === 'f') {
+    e.preventDefault();
+    sidebarRef.value?.focusSearch();
+  }
 };
 
 /**
@@ -535,7 +617,6 @@ function onDragStart(e: MouseEvent) {
  * 3. 从后端加载分组和接口数据
  */
 onMounted(() => {
-  // 1. 初始化 IP 和 API 地址
   if (window.services) {
     localIp.value = window.services.getLocalIP();
     API_BASE.value = window.services.getServerUrl();
@@ -543,6 +624,11 @@ onMounted(() => {
   loadTestCache();
   loadData();
   loadProjects();
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
@@ -552,6 +638,7 @@ onMounted(() => {
     <!-- 左侧：分组侧边栏，宽度可拖拽调整 -->
     <div class="sidebar-wrapper" :style="{ width: sidebarWidth + 'px' }">
       <GroupSidebar
+          ref="sidebarRef"
           :groups="groups"
           :currentRuleId="currentRuleId"
           :projects="projects"
@@ -565,6 +652,9 @@ onMounted(() => {
           @rule-select="handleSelectRule"
           @rule-toggle="handleToggleRule"
           @rule-delete="handleDeleteRule"
+          @rule-copy="handleCopyRule"
+          @rule-move="handleMoveRule"
+          @rule-reorder="handleReorderRule"
       />
       <!-- 拖拽分隔条 -->
       <div class="resize-handle" @mousedown="onDragStart"></div>
