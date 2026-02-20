@@ -4,7 +4,7 @@
  * 通过 v-model 双向绑定当前选中的 tab，点击切换主内容区域。
  */
 <script setup lang="ts">
-import { Connection, DocumentCopy, Setting, InfoFilled, Briefcase } from '@element-plus/icons-vue';
+import { Connection, DocumentCopy, Setting, InfoFilled, Briefcase, FolderOpened } from '@element-plus/icons-vue';
 import type { Component } from 'vue';
 
 /** 当前选中的导航项 key，支持 v-model 双向绑定 */
@@ -16,8 +16,9 @@ defineEmits<{ (e: 'update:modelValue', val: string): void }>();
 /** 导航项数据结构 */
 interface NavItem { key: string; label: string; icon: Component; }
 
-/** 顶部主菜单项列表：接口管理、模板管理、工具箱 */
+/** 顶部主菜单项列表：项目管理、接口管理、模板管理、工具箱 */
 const menuItems: NavItem[] = [
+  { key: 'project', label: '项目', icon: FolderOpened },
   { key: 'api', label: '接口', icon: Connection },
   { key: 'template', label: '模板', icon: DocumentCopy },
   { key: 'tools', label: '工具', icon: Briefcase },

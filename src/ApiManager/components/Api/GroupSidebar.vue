@@ -4,57 +4,66 @@
  *
  * 功能说明：
  * - 展示分组列表（可折叠手风琴），每个分组下包含接口列表
+ * - 支持按项目过滤分组
  * - 分组操作：新增分组、重命名、删除、服务配置
  * - 接口操作：新增接口、选中、删除、启用/禁用开关
  * - 接口按 HTTP 方法（GET/POST/PUT/DELETE）显示不同颜色标签
  */
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Plus, Edit, Delete, Setting } from '@element-plus/icons-vue';
-import type { MockGroup, MockRule } from '@/types/mock';
+import type { MockGroup, MockRule, Project } from '@/types/mock';
 import { TagType } from "@/types/groupSideBar";
 
 /**
  * 组件属性
- * @property {MockGroup[]} groups - 分组数据列表，包含分组信息及其下属接口
- * @property {number | null} currentRuleId - 当前选中的接口 ID，用于高亮显示
+ * @property {MockGroup[]} groups - 分组数据列表
+ * @property {number | null} currentRuleId - 当前选中的接口 ID
+ * @property {Project[]} projects - 项目列表
+ * @property {number | null} currentProjectId - 当前选中的项目 ID
  */
 const props = defineProps<{
   groups: MockGroup[];
   currentRuleId: number | null;
+  projects: Project[];
+  currentProjectId: number | null;
 }>();
 
 /**
  * 组件事件
- * @event group-add - 新增分组
- * @event group-rename - 重命名分组，携带目标分组对象
- * @event group-delete - 删除分组，携带分组索引
- * @event group-config - 打开分组的服务配置，携带目标分组对象
- * @event rule-add - 在指定分组下新增接口，携带目标分组对象
- * @event rule-select - 选中某个接口，携带目标接口对象
- * @event rule-delete - 删除接口，携带所属分组和目标接口对象
- * @event rule-toggle - 切换接口的启用/禁用状态
  */
 const emit = defineEmits<{
+  (e: 'project-change', projectId: number | null): void;
   (e: 'group-add'): void;
   (e: 'group-rename', group: MockGroup): void;
   (e: 'group-delete', idx: number): void;
   (e: 'group-config', group: MockGroup): void;
   (e: 'rule-add', group: MockGroup): void;
   (e: 'rule-select', rule: MockRule): void;
-  (e: 'rule-delete', group: MockGroup, rule: MockRule): void; // 新增删除事件
+  (e: 'rule-delete', group: MockGroup, rule: MockRule): void;
   (e: 'rule-toggle'): void;
 }>();
 
-/** 当前展开的分组 ID 列表，用于控制手风琴折叠状态 */
+/** 当前展开的分组 ID 列表 */
 const activeGroupNames = ref<number[]>([]);
 
+/** 按项目过滤后的分组列表 */
+const filteredGroups = computed(() => {
+  if (props.currentProjectId === null) return props.groups;
+  return props.groups.filter(g => g.projectId === props.currentProjectId);
+});
+
+/** 获取分组在原始 groups 数组中的索引（用于删除操作） */
+const getOriginalIndex = (group: MockGroup) => {
+  return props.groups.findIndex(g => g.id === group.id);
+};
+
 /**
- * 监听分组数据变化
+ * 监听过滤后的分组数据变化
  * 当分组数据首次加载时，默认展开所有分组
  */
-watch(() => props.groups, (newVal) => {
-  if (newVal && activeGroupNames.value.length === 0) {
+watch(() => filteredGroups.value, (newVal) => {
+  if (newVal && newVal.length > 0) {
     activeGroupNames.value = newVal.map(g => g.id);
   }
 }, { immediate: true });
@@ -83,12 +92,32 @@ const methodTagType = (method: string) => {
       <span class="title">接口列表</span>
       <el-button type="primary" size="small" :icon="Plus" circle @click="$emit('group-add')" title="新建分组" />
     </div>
+
+    <!-- 项目选择器 -->
+    <div class="project-selector">
+      <el-select
+        :model-value="currentProjectId"
+        @update:model-value="$emit('project-change', $event)"
+        placeholder="全部项目"
+        clearable
+        size="small"
+        style="width: 100%"
+      >
+        <el-option
+          v-for="p in projects"
+          :key="p.id"
+          :label="`${p.icon || '📦'} ${p.name}`"
+          :value="p.id"
+        />
+      </el-select>
+    </div>
+
     <!-- 可滚动的分组列表区域 -->
     <el-scrollbar>
       <div class="group-wrapper">
         <!-- 手风琴折叠面板，每个面板对应一个分组 -->
         <el-collapse v-model="activeGroupNames">
-          <el-collapse-item v-for="(group, idx) in groups" :key="group.id" :name="group.id">
+          <el-collapse-item v-for="group in filteredGroups" :key="group.id" :name="group.id">
             <!-- 分组标题栏：分组名称 + 操作按钮组 -->
             <template #title>
               <div class="group-title-content">
@@ -104,7 +133,7 @@ const methodTagType = (method: string) => {
                   <el-button link type="warning" @click.stop="$emit('group-rename', group)" title="重命名">
                     <el-icon><Edit /></el-icon>
                   </el-button>
-                  <el-button link type="danger" @click.stop="$emit('group-delete', idx)" title="删除分组">
+                  <el-button link type="danger" @click.stop="$emit('group-delete', getOriginalIndex(group))" title="删除分组">
                     <el-icon><Delete /></el-icon>
                   </el-button>
                 </div>
@@ -177,6 +206,10 @@ const methodTagType = (method: string) => {
   border-bottom: 1px solid var(--border-color);
   font-weight: 600;
   color: var(--text-primary);
+}
+.project-selector {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
 }
 .group-wrapper { padding: 10px; }
 :deep(.el-collapse-item__header) {

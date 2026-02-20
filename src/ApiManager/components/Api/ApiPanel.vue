@@ -20,7 +20,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import GroupSidebar from './GroupSidebar.vue';
 import RuleEditor from './RuleEditor.vue';
 import ServiceConfigPanel from './ServiceConfig.vue';
-import type { MockGroup, MockRule, TestResultFile, TestResultMeta } from '@/types/mock';
+import type { MockGroup, MockRule, TestResultFile, TestResultMeta, Project } from '@/types/mock';
 import { settingsKey } from '@/composables/useSettings';
 
 const appSettings = inject(settingsKey, null);
@@ -31,6 +31,41 @@ const localIp = ref('localhost');
 const API_BASE = ref('http://localhost:3000'); // 默认值
 /** 分组数据列表，包含所有分组及其下属接口规则 */
 const groups = ref<MockGroup[]>([]);
+
+// --- 项目选择 ---
+
+const PROJECT_STORAGE_KEY = 'mock-api-current-project';
+/** 项目列表 */
+const projects = ref<Project[]>([]);
+/** 当前选中的项目 ID，null 表示"全部项目" */
+const currentProjectId = ref<number | null>((() => {
+  try {
+    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+})());
+
+/** 加载项目列表 */
+const loadProjects = async () => {
+  try {
+    const res = await fetch(`${API_BASE.value}/_admin/projects`);
+    if (!res.ok) throw new Error();
+    projects.value = await res.json();
+  } catch {}
+};
+
+/** 切换项目时持久化并清空当前选中接口 */
+const handleProjectChange = (val: number | null) => {
+  currentProjectId.value = val;
+  currentRuleId.value = null;
+  configGroupId.value = null;
+  editingRule.value = {};
+  try {
+    if (val === null) localStorage.removeItem(PROJECT_STORAGE_KEY);
+    else localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(val));
+  } catch {}
+};
 
 // --- 视图状态 ---
 
@@ -132,8 +167,8 @@ const saveData = async () => { try { await fetch(`${API_BASE.value}/_admin/rules
 
 // --- 分组操作逻辑 ---
 
-/** 新建分组：弹出输入框，输入名称后添加到分组列表 */
-const handleAddGroup = () => { ElMessageBox.prompt('请输入分组名称', '新建分组').then(({ value }: any) => { if (!value) return; groups.value.push({ id: Date.now(), name: value, children: [] }); saveData(); }).catch(() => {}); };
+/** 新建分组：弹出输入框，输入名称后添加到分组列表，自动关联当前项目 */
+const handleAddGroup = () => { ElMessageBox.prompt('请输入分组名称', '新建分组').then(({ value }: any) => { if (!value) return; groups.value.push({ id: Date.now(), name: value, projectId: currentProjectId.value ?? undefined, children: [] }); saveData(); }).catch(() => {}); };
 /** 重命名分组：弹出输入框，修改分组名称后保存 */
 const handleRenameGroup = (group: MockGroup) => { ElMessageBox.prompt('请输入新名称', '重命名', { inputValue: group.name }).then(({ value }: any) => { if (value) { group.name = value; saveData(); } }).catch(() => {}); };
 /** 删除分组：确认后删除分组及其下所有接口，若当前选中接口在该分组内则清空选中状态 */
@@ -507,6 +542,7 @@ onMounted(() => {
   }
   loadTestCache();
   loadData();
+  loadProjects();
 });
 </script>
 
@@ -518,6 +554,9 @@ onMounted(() => {
       <GroupSidebar
           :groups="groups"
           :currentRuleId="currentRuleId"
+          :projects="projects"
+          :currentProjectId="currentProjectId"
+          @project-change="handleProjectChange"
           @group-add="handleAddGroup"
           @group-rename="handleRenameGroup"
           @group-delete="handleDeleteGroup"

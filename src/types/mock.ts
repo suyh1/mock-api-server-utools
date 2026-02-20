@@ -62,8 +62,38 @@ export interface ServiceConfig {
 export interface MockGroup {
     id: number;
     name: string;
+    projectId?: number;     // 所属项目 ID，undefined 表示"未分类"
     children: MockRule[];
     config?: ServiceConfig; // 分组的服务配置
+}
+
+// ==================== 项目管理 ====================
+
+/** 项目成员角色 */
+export type MemberRole = 'owner' | 'admin' | 'developer' | 'viewer';
+
+/** 项目状态 */
+export type ProjectStatus = 'active' | 'archived';
+
+/** 项目成员 */
+export interface ProjectMember {
+    id: number;
+    name: string;
+    role: MemberRole;
+    joinedAt: number;
+}
+
+/** 项目 */
+export interface Project {
+    id: number;
+    name: string;                    // 项目名称
+    description?: string;            // 项目介绍
+    icon?: string;                   // 项目图标（emoji）
+    status: ProjectStatus;           // 项目状态
+    members: ProjectMember[];        // 项目成员
+    tags?: string[];                 // 项目标签
+    createdAt: number;
+    updatedAt: number;
 }
 
 // 测试结果中的文件信息（用于二进制响应下载）
