@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { escapeHtml, copyText } from './tools-utils';
+import { builtinRegexPresets, type RegexPresetItem } from './regex-presets';
 
 defineProps<{
   activeTool: string;
@@ -27,26 +28,102 @@ const regexError = computed(() => {
   catch (e: any) { return e.message; }
 });
 
-const regexPresets = [
-  { label: '手机号', pattern: '1[3-9]\\d{9}', flags: 'g' },
-  { label: '邮箱', pattern: '[\\w.-]+@[\\w-]+(\\.[\\w-]+)+', flags: 'gi' },
-  { label: 'URL', pattern: 'https?://[\\w\\-._~:/?#\\[\\]@!$&\'()*+,;=%]+', flags: 'gi' },
-  { label: 'IPv4', pattern: '\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b', flags: 'g' },
-  { label: 'IPv6', pattern: '([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}', flags: 'g' },
-  { label: '身份证号', pattern: '\\d{17}[\\dXx]', flags: 'g' },
-  { label: '中文字符', pattern: '[\\u4e00-\\u9fff]+', flags: 'g' },
-  { label: '日期 YYYY-MM-DD', pattern: '\\d{4}-\\d{2}-\\d{2}', flags: 'g' },
-  { label: 'HTML 标签', pattern: '<[^>]+>', flags: 'g' },
-  { label: '十六进制颜色', pattern: '#[0-9a-fA-F]{3,8}\\b', flags: 'g' },
-  { label: '数字（含小数）', pattern: '-?\\d+(\\.\\d+)?', flags: 'g' },
-  { label: '文件路径', pattern: '(/[\\w.-]+)+/?', flags: 'g' },
-  { label: '变量名', pattern: '[a-zA-Z_$][\\w$]*', flags: 'g' },
-  { label: '密码强度（8+混合）', pattern: '(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9]).{8,}', flags: 'g' },
-];
+/* -- 预设库：分类 + 搜索 + 自定义收藏 -- */
 
-function applyRegexPreset(preset: typeof regexPresets[0]) {
-  regexPattern.value = preset.pattern;
-  regexFlags.value = preset.flags;
+const CUSTOM_REGEX_KEY = 'mock-api-custom-regex-presets';
+const customPresets = ref<RegexPresetItem[]>(
+  JSON.parse(localStorage.getItem(CUSTOM_REGEX_KEY) || '[]')
+);
+function saveCustomPresetsToStorage() {
+  localStorage.setItem(CUSTOM_REGEX_KEY, JSON.stringify(customPresets.value));
+}
+
+const regexActiveCategory = ref('全部');
+const regexSearch = ref('');
+
+const allPresetCategories = computed(() => {
+  const cats = ['全部', ...builtinRegexPresets.map(c => c.category)];
+  if (customPresets.value.length) cats.push('我的收藏');
+  return cats;
+});
+
+type DisplayPreset = RegexPresetItem & { isCustom?: boolean; customIdx?: number };
+
+const filteredPresets = computed((): DisplayPreset[] => {
+  let presets: DisplayPreset[] = [];
+
+  if (regexActiveCategory.value === '全部') {
+    for (const cat of builtinRegexPresets) presets.push(...cat.presets);
+    customPresets.value.forEach((p, i) => presets.push({ ...p, isCustom: true, customIdx: i }));
+  } else if (regexActiveCategory.value === '我的收藏') {
+    customPresets.value.forEach((p, i) => presets.push({ ...p, isCustom: true, customIdx: i }));
+  } else {
+    const cat = builtinRegexPresets.find(c => c.category === regexActiveCategory.value);
+    if (cat) presets.push(...cat.presets);
+  }
+
+  if (regexSearch.value) {
+    const kw = regexSearch.value.toLowerCase();
+    presets = presets.filter(p =>
+      p.label.toLowerCase().includes(kw) ||
+      p.desc.toLowerCase().includes(kw) ||
+      p.pattern.toLowerCase().includes(kw)
+    );
+  }
+  return presets;
+});
+
+function applyPreset(p: RegexPresetItem) {
+  regexPattern.value = p.pattern;
+  regexFlags.value = p.flags;
+  if (p.example && !regexTestStr.value) {
+    regexTestStr.value = p.example;
+  }
+}
+
+/* -- 自定义预设 CRUD -- */
+const showPresetDialog = ref(false);
+const editingPresetIdx = ref(-1);
+const presetForm = ref({ label: '', pattern: '', flags: 'g', desc: '', example: '' });
+
+function openAddPresetDialog() {
+  editingPresetIdx.value = -1;
+  presetForm.value = {
+    label: '',
+    pattern: regexPattern.value,
+    flags: regexFlags.value,
+    desc: '',
+    example: regexTestStr.value,
+  };
+  showPresetDialog.value = true;
+}
+
+function openEditPresetDialog(idx: number) {
+  editingPresetIdx.value = idx;
+  const p = customPresets.value[idx];
+  presetForm.value = { ...p };
+  showPresetDialog.value = true;
+}
+
+function savePresetForm() {
+  const { label, pattern, flags, desc, example } = presetForm.value;
+  if (!label.trim() || !pattern.trim()) return;
+  const preset: RegexPresetItem = { label: label.trim(), pattern, flags, desc: desc.trim(), example: example.trim() };
+  if (editingPresetIdx.value >= 0) {
+    customPresets.value[editingPresetIdx.value] = preset;
+  } else {
+    customPresets.value.push(preset);
+  }
+  saveCustomPresetsToStorage();
+  showPresetDialog.value = false;
+}
+
+function deleteCustomPreset(idx: number) {
+  customPresets.value.splice(idx, 1);
+  saveCustomPresetsToStorage();
+  if (regexActiveCategory.value === '我的收藏' && !customPresets.value.length) {
+    regexActiveCategory.value = '全部';
+  }
 }
 
 const regexMatches = computed(() => {
@@ -352,16 +429,46 @@ function joinWords(words: string[], style: string): string {
   <div>
     <!-- 正则测试 -->
     <template v-if="activeTool === 'regex'">
-      <div class="regex-presets">
-        <label>常用预设</label>
-        <div class="regex-preset-list">
+      <!-- 预设库 -->
+      <div class="regex-lib">
+        <div class="regex-lib-header">
+          <el-input v-model="regexSearch" placeholder="搜索正则预设..." size="small" clearable style="width: 200px;" />
+          <el-button size="small" @click="openAddPresetDialog" :disabled="!regexPattern">收藏当前正则</el-button>
+        </div>
+        <div class="regex-category-tabs">
           <span
-            v-for="p in regexPresets" :key="p.label"
+            v-for="cat in allPresetCategories" :key="cat"
             class="regex-preset-tag"
-            @click="applyRegexPreset(p)"
-          >{{ p.label }}</span>
+            :class="{ 'preset-active': regexActiveCategory === cat }"
+            @click="regexActiveCategory = cat"
+          >{{ cat }}</span>
+        </div>
+        <div class="regex-preset-list">
+          <el-tooltip
+            v-for="(p, i) in filteredPresets" :key="p.label + i"
+            placement="top" :show-after="400"
+          >
+            <template #content>
+              <div style="font-size: 12px; max-width: 320px;">
+                <div style="font-weight: 600; margin-bottom: 4px;">{{ p.desc }}</div>
+                <div style="color: #a0a0a0;">正则: <code style="color: #409eff;">{{ p.pattern }}</code></div>
+                <div v-if="p.example" style="color: #a0a0a0;">示例: <code style="color: #67c23a;">{{ p.example }}</code></div>
+                <div style="color: #a0a0a0;">Flags: <code style="color: #e6a23c;">{{ p.flags }}</code></div>
+              </div>
+            </template>
+            <span class="regex-preset-tag" @click="applyPreset(p)">
+              {{ p.label }}
+              <span v-if="p.isCustom" class="preset-actions">
+                <span class="preset-action-btn" @click.stop="openEditPresetDialog(p.customIdx!)">&#9998;</span>
+                <span class="preset-action-btn preset-del-btn" @click.stop="deleteCustomPreset(p.customIdx!)">×</span>
+              </span>
+            </span>
+          </el-tooltip>
+          <span v-if="!filteredPresets.length" style="font-size: 12px; color: var(--text-secondary);">无匹配预设</span>
         </div>
       </div>
+
+      <!-- 正则输入 -->
       <div class="tool-row">
         <div class="tool-col" style="flex: 2;">
           <label>正则表达式</label>
@@ -401,6 +508,38 @@ function joinWords(words: string[], style: string): string {
           <el-button @click="copyText(regexReplaceResult)">复制替换结果</el-button>
         </div>
       </div>
+
+      <!-- 自定义预设对话框 -->
+      <el-dialog v-model="showPresetDialog" :title="editingPresetIdx >= 0 ? '编辑收藏' : '收藏正则'" width="420px" append-to-body>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="tool-col">
+            <label>名称 *</label>
+            <el-input v-model="presetForm.label" placeholder="如：手机号验证" />
+          </div>
+          <div class="tool-col">
+            <label>正则表达式 *</label>
+            <el-input v-model="presetForm.pattern" placeholder="如 \d+" />
+          </div>
+          <div class="tool-row">
+            <div class="tool-col">
+              <label>Flags</label>
+              <el-input v-model="presetForm.flags" placeholder="g" />
+            </div>
+            <div class="tool-col">
+              <label>示例文本</label>
+              <el-input v-model="presetForm.example" placeholder="可匹配的示例" />
+            </div>
+          </div>
+          <div class="tool-col">
+            <label>说明</label>
+            <el-input v-model="presetForm.desc" placeholder="简要描述用途" />
+          </div>
+        </div>
+        <template #footer>
+          <el-button @click="showPresetDialog = false">取消</el-button>
+          <el-button type="primary" @click="savePresetForm" :disabled="!presetForm.label.trim() || !presetForm.pattern.trim()">保存</el-button>
+        </template>
+      </el-dialog>
     </template>
 
     <!-- 文本对比 -->
@@ -560,6 +699,58 @@ function joinWords(words: string[], style: string): string {
 
 <style scoped>
 @import './tools-common.css';
+
+/* ==================== 正则预设库 ==================== */
+
+.regex-lib {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+}
+.regex-lib-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.regex-category-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.regex-category-tabs .regex-preset-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.preset-actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+.preset-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: all 0.15s;
+}
+.preset-action-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+}
+.preset-del-btn:hover {
+  color: #f56c6c;
+  background: rgba(245, 108, 108, 0.1);
+}
 
 /* ==================== 正则测试 ==================== */
 
