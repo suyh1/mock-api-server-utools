@@ -12,10 +12,11 @@
  */
 <script setup lang="ts">
 import { computed, inject, ref, watch, onMounted } from 'vue';
-import { Check, VideoPlay, CopyDocument, Plus, Delete, Document, ArrowDown, ArrowRight, FolderOpened, Close, Download, DocumentCopy } from '@element-plus/icons-vue';
+import { Check, VideoPlay, CopyDocument, Plus, Delete, Document, ArrowDown, ArrowRight, FolderOpened, Close, Download, DocumentCopy, MagicStick } from '@element-plus/icons-vue';
 import type { MockRule, KeyValueItem, MockTemplate, ServiceConfig, TestResultFile, TestResultMeta } from '@/types/mock';
 import CodeEditor from '@/ApiManager/components/CodeEditor.vue'; // 引入 CodeMirror 封装组件
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { generateDataTemplate, buildAdvancedTemplate, detectInputType, extractTsInterfaceNames } from '@/utils/generateDataTemplate';
 
 /**
  * 组件 Props 定义
@@ -494,6 +495,80 @@ const applyTemplate = (tpl: MockTemplate) => {
   ElMessage.success(`已应用模板: ${tpl.name}`);
 };
 
+// --- 智能生成 dataTemplate 弹窗 ---
+const showGenDialog = ref(false);
+const genInput = ref('');
+const genPreview = ref('');
+const genError = ref('');
+const genDetectedType = ref<'json' | 'typescript'>('json');
+const genInterfaceNames = ref<string[]>([]);
+const genSelectedInterface = ref('');
+
+/** 根据当前输入和选中的 interface 生成预览 */
+function updateGenPreview() {
+  const val = genInput.value;
+  if (!val.trim()) {
+    genPreview.value = '';
+    genError.value = '';
+    genInterfaceNames.value = [];
+    genSelectedInterface.value = '';
+    return;
+  }
+  try {
+    genDetectedType.value = detectInputType(val);
+
+    // 如果是 TS，提取所有可选 interface 名称
+    if (genDetectedType.value === 'typescript') {
+      const names = extractTsInterfaceNames(val);
+      genInterfaceNames.value = names;
+      // 如果当前选中的不在列表中，自动选最后一个
+      if (!genSelectedInterface.value || !names.includes(genSelectedInterface.value)) {
+        genSelectedInterface.value = names.length > 0 ? names[names.length - 1] : '';
+      }
+    } else {
+      genInterfaceNames.value = [];
+      genSelectedInterface.value = '';
+    }
+
+    const targetName = genDetectedType.value === 'typescript' ? genSelectedInterface.value || undefined : undefined;
+    const templateBody = generateDataTemplate(val, targetName);
+    genPreview.value = buildAdvancedTemplate(templateBody);
+    genError.value = '';
+  } catch (e: any) {
+    genPreview.value = '';
+    genError.value = e.message || '解析失败，请检查输入格式';
+  }
+}
+
+/** 实时预览：用户输入变化时自动生成预览 */
+watch(genInput, () => updateGenPreview());
+
+/** 切换目标 interface 时重新生成 */
+watch(genSelectedInterface, () => {
+  if (genInput.value.trim()) updateGenPreview();
+});
+
+/** 打开智能生成弹窗 */
+const handleOpenGenDialog = () => {
+  genInput.value = '';
+  genPreview.value = '';
+  genError.value = '';
+  genInterfaceNames.value = [];
+  genSelectedInterface.value = '';
+  showGenDialog.value = true;
+};
+
+/** 确认应用生成的 dataTemplate */
+const handleApplyGenerated = () => {
+  if (!genPreview.value) {
+    ElMessage.warning('请先输入有效的 JSON 或 TypeScript 数据');
+    return;
+  }
+  rule.value.responseAdvanced = genPreview.value;
+  showGenDialog.value = false;
+  ElMessage.success('已生成并填入 dataTemplate');
+};
+
 onMounted(() => {
   loadTemplates(); // 加载模板
 }); // 加载模板
@@ -751,6 +826,7 @@ onMounted(() => {
               <div class="script-hint">
                 <el-icon><Document /></el-icon>
                 <span>入口函数为 main(req, Mock)，支持 mockjs 语法。</span>
+                <el-button type="primary" size="small" :icon="MagicStick" @click="handleOpenGenDialog" class="gen-btn">智能生成</el-button>
               </div>
               <CodeEditor
                   v-model="responseAdvancedCode"
@@ -822,6 +898,69 @@ onMounted(() => {
       </div>
     </div>
     <el-empty v-else description="请选择接口" />
+
+    <!-- 智能生成 dataTemplate 弹窗 -->
+    <el-dialog v-model="showGenDialog" title="智能生成 dataTemplate" width="90%" top="5vh" :close-on-click-modal="false" class="gen-dialog">
+      <div class="gen-dialog-body">
+        <div class="gen-input-section">
+          <div class="gen-section-header">
+            <span class="gen-section-title">粘贴数据</span>
+            <el-tag size="small" :type="genDetectedType === 'typescript' ? 'warning' : 'primary'" v-if="genInput.trim()">
+              {{ genDetectedType === 'typescript' ? 'TypeScript' : 'JSON' }}
+            </el-tag>
+            <el-select
+              v-if="genInterfaceNames.length > 1"
+              v-model="genSelectedInterface"
+              size="small"
+              style="width: 160px; margin-left: auto"
+              placeholder="选择目标接口"
+            >
+              <el-option v-for="n in genInterfaceNames" :key="n" :label="n" :value="n" />
+            </el-select>
+          </div>
+          <el-input
+            v-model="genInput"
+            type="textarea"
+            :rows="14"
+            placeholder='粘贴 JSON 数据，例如：
+{
+  "id": 1,
+  "name": "张三",
+  "age": 25,
+  "email": "test@example.com",
+  "list": [{ "title": "标题", "price": 99.9 }]
+}
+
+或 TypeScript 接口定义：
+interface User {
+  id: number;
+  name: string;
+  age: number;
+  email: string;
+  list: { title: string; price: number }[];
+}'
+          />
+          <div v-if="genError" class="gen-error">{{ genError }}</div>
+        </div>
+        <div class="gen-preview-section">
+          <div class="gen-section-header">
+            <span class="gen-section-title">生成预览</span>
+          </div>
+          <div class="gen-preview-editor">
+            <CodeEditor
+              :model-value="genPreview || '// 在左侧粘贴数据后自动生成预览...'"
+              language="javascript"
+              :is-dark="isDark"
+              readonly
+            />
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showGenDialog = false">取消</el-button>
+        <el-button type="primary" :disabled="!genPreview" @click="handleApplyGenerated">应用到编辑器</el-button>
+      </template>
+    </el-dialog>
   </el-main>
 </template>
 
@@ -1000,5 +1139,55 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 智能生成按钮 */
+.gen-btn {
+  margin-left: auto;
+}
+
+/* 智能生成弹窗 */
+.gen-dialog-body {
+  display: flex;
+  gap: 16px;
+  height: 60vh;
+}
+.gen-input-section,
+.gen-preview-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gen-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.gen-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.gen-input-section :deep(.el-textarea__inner) {
+  height: 100%;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  resize: none;
+}
+.gen-input-section :deep(.el-textarea) {
+  flex: 1;
+}
+.gen-preview-editor {
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+.gen-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #F56C6C;
 }
 </style>
