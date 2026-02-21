@@ -22,8 +22,10 @@ import RuleEditor from './RuleEditor.vue';
 import ServiceConfigPanel from './ServiceConfig.vue';
 import type { MockGroup, MockRule, TestResultFile, TestResultMeta, Project } from '@/types/mock';
 import { settingsKey } from '@/composables/useSettings';
+import { useRequestLogs } from '@/composables/useRequestLogs';
 
 const appSettings = inject(settingsKey, null);
+const { addLog } = useRequestLogs();
 
 /** 本机 IP 地址，用于拼接接口完整 URL */
 const localIp = ref('localhost');
@@ -476,9 +478,10 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
   testResultFile.value = null;
   testResultMeta.value = null;
 
-  try {
-    let targetUrl: string;
+  let targetUrl = '';
+  const customHeaders: Record<string, string> = {};
 
+  try {
     if (mode === 'real') {
       // 请求真实接口：从 realConfig + 分组配置构建 URL
       targetUrl = buildRealUrl();
@@ -510,7 +513,6 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
     const fetchOptions: RequestInit = { method };
 
     // 添加自定义请求头
-    const customHeaders: Record<string, string> = {};
     editingRule.value.headers?.forEach(h => {
       if (h.key && h.value) customHeaders[h.key] = h.value;
     });
@@ -567,6 +569,8 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
       'video/', 'audio/', 'image/', 'application/vnd.openxmlformats', 'application/msword'];
     const isBinary = binaryPatterns.some(p => contentType.includes(p));
 
+    let responseBodyForLog: string | undefined;
+
     if (isBinary) {
       const blob = await res.blob();
       const disposition = res.headers.get('content-disposition') || '';
@@ -580,8 +584,10 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
         contentType,
         blobUrl: URL.createObjectURL(blob),
       };
+      responseBodyForLog = `[Binary: ${filename}, ${blob.size} bytes]`;
     } else {
       const text = await res.text();
+      responseBodyForLog = text;
       try {
         testResult.value = JSON.stringify(JSON.parse(text), null, 2);
       } catch {
@@ -589,8 +595,45 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
       }
     }
 
+    // 记录成功日志
+    const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
+    const rule = group?.children.find(r => r.id === currentRuleId.value);
+    addLog({
+      timestamp: Date.now(),
+      method: method as any,
+      url: targetUrl,
+      status: res.status,
+      statusText: res.statusText,
+      duration: elapsed,
+      mode,
+      ruleId: currentRuleId.value ?? undefined,
+      ruleName: rule?.name || rule?.url,
+      groupName: group?.name,
+      requestHeaders: customHeaders,
+      requestBody: fetchOptions.body ? String(fetchOptions.body) : undefined,
+      responseHeaders: resHeaders,
+      responseBody: responseBodyForLog,
+    });
+
   } catch (e: any) {
     testResult.value = `Error: ${e.message}`;
+    // 记录失败日志
+    const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
+    const rule = group?.children.find(r => r.id === currentRuleId.value);
+    addLog({
+      timestamp: Date.now(),
+      method: editingRule.value.method || 'GET',
+      url: targetUrl,
+      status: 0,
+      statusText: 'Error',
+      duration: 0,
+      mode,
+      ruleId: currentRuleId.value ?? undefined,
+      ruleName: rule?.name || rule?.url,
+      groupName: group?.name,
+      requestHeaders: customHeaders,
+      error: e.message,
+    });
   }
   isTesting.value = false;
   cacheCurrentResult();
