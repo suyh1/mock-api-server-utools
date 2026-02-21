@@ -160,3 +160,59 @@ export interface MockTemplate {
     content: string;         // 模板内容 (代码字符串)
     createdAt: number;
 }
+
+// ==================== WebSocket Mock ====================
+
+/** WS 消息匹配类型 */
+export type WsMatchType = 'exact' | 'contains' | 'regex' | 'any';
+
+/** WS 响应模式 */
+export type WsResponseMode = 'basic' | 'advanced';
+
+/** WS 消息匹配规则 */
+export interface WsRule {
+    id: number;
+    name: string;
+    active: boolean;
+    matchType: WsMatchType;
+    matchPattern: string;        // 匹配模式（any 时可为空）
+    delay: number;               // 延迟回复（ms）
+    responseMode: WsResponseMode;
+    responseBasic: string;       // 基础模式响应内容
+    responseAdvanced: string;    // 高级模式脚本
+}
+
+/** WS 服务配置 */
+export interface WsServer {
+    id: number;
+    name: string;
+    port: number;
+    path: string;                // WebSocket 路径，如 /ws
+    description?: string;
+    rules: WsRule[];
+    onConnectMessage?: string;   // 客户端连接时自动发送的欢迎消息
+    createdAt: number;
+    updatedAt: number;
+}
+
+/** WS 消息日志方向 */
+export type WsLogDirection = 'in' | 'out' | 'system';
+
+/** WS 消息日志条目 */
+export interface WsLogEntry {
+    id: number;
+    serverId: number;
+    timestamp: number;
+    direction: WsLogDirection;
+    clientId: string;
+    clientIp: string;
+    message: string;
+    matchedRule?: string;        // 匹配的规则名称
+}
+
+/** WS 已连接客户端信息 */
+export interface WsClientInfo {
+    clientId: string;
+    clientIp: string;
+    connectedAt: number;
+}

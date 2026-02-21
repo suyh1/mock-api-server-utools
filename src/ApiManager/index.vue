@@ -22,6 +22,7 @@ import ToolsPanel from './components/Tools/ToolsPanel.vue';
 import SettingsPanel from './components/Settings/SettingsPanel.vue';
 import LogPanel from './components/Log/LogPanel.vue';
 import ScenarioPanel from './components/Scenario/ScenarioPanel.vue';
+import WsPanel from './components/WebSocket/WsPanel.vue';
 import { useSettings, settingsKey } from '@/composables/useSettings';
 
 /** 全局设置（持久化到 localStorage） */
@@ -86,6 +87,7 @@ const currentTitle = computed(() => {
     tools: '开发工具',
     log: '请求日志',
     scenario: '场景管理',
+    websocket: 'WebSocket 管理',
     settings: '全局设置',
     about: '关于软件'
   };
@@ -150,6 +152,11 @@ const currentTitle = computed(() => {
           <!-- 场景管理面板 -->
           <div v-if="activeTab === 'scenario'" class="full-height-module">
             <ScenarioPanel />
+          </div>
+
+          <!-- WebSocket 管理面板 -->
+          <div v-if="activeTab === 'websocket'" class="full-height-module">
+            <WsPanel />
           </div>
 
           <!-- 全局设置 -->

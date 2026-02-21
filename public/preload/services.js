@@ -23,6 +23,10 @@ const bodyParser = require('body-parser')
 const net = require('net')
 /** Node.js VM 模块，用于执行高级模式脚本的沙箱环境 */
 const vm = require('vm')
+/** Node.js HTTP 模块，用于创建 WS 底层 HTTP 服务 */
+const http = require('http')
+/** WebSocket 库 */
+const WebSocket = require('ws')
 
 /**
  * 尝试加载 mockjs 库
@@ -487,6 +491,467 @@ adminApp.post('/_admin/project/delete', (req, res) => {
   if (changed) saveGroups(groups);
 
   res.json({ success: true, data: projects });
+});
+
+/* ==================== WebSocket Mock 服务管理 ==================== */
+
+/** uTools 数据库中存储 WS 服务配置的键名 */
+const DB_WS_KEY = 'mock_ws_v1';
+/** WS 日志上限 */
+const WS_LOG_LIMIT = 500;
+
+/**
+ * 从 uTools 数据库读取所有 WS 服务配置
+ * @description 首次使用时自动创建示例 WS 服务
+ * @returns {Array} WS 服务配置数组
+ */
+function getWsServers() {
+  const doc = utools.db.get(DB_WS_KEY);
+  let data = doc ? doc.data : [];
+  // 首次使用：自动创建示例 WS 服务
+  if (!doc || (Array.isArray(data) && data.length === 0)) {
+    data = [createExampleWsServer()];
+    saveWsServers(data);
+  }
+  return data;
+}
+
+/**
+ * 创建内置示例 WS 服务配置
+ * @returns {object} 示例 WS 服务对象
+ */
+function createExampleWsServer() {
+  const now = Date.now();
+  return {
+    id: now,
+    name: '💬 示例聊天服务',
+    port: 8088,
+    path: '/ws',
+    description: '内置示例 WebSocket Mock 服务，包含 4 种匹配规则演示。启动后可在浏览器 DevTools 中测试连接。',
+    onConnectMessage: JSON.stringify({ type: 'welcome', message: '欢迎连接 Mock WebSocket 服务！', timestamp: '{{now}}' }),
+    rules: [
+      {
+        id: now + 1,
+        name: '心跳检测 (精确匹配)',
+        active: true,
+        matchType: 'exact',
+        matchPattern: 'ping',
+        delay: 0,
+        responseMode: 'basic',
+        responseBasic: 'pong',
+        responseAdvanced: '',
+      },
+      {
+        id: now + 2,
+        name: '打招呼 (包含匹配)',
+        active: true,
+        matchType: 'contains',
+        matchPattern: 'hello',
+        delay: 200,
+        responseMode: 'basic',
+        responseBasic: JSON.stringify({ type: 'greeting', message: '你好！我是 Mock 服务器 🤖', time: new Date().toISOString() }),
+        responseAdvanced: '',
+      },
+      {
+        id: now + 3,
+        name: 'JSON 消息 (正则匹配)',
+        active: true,
+        matchType: 'regex',
+        matchPattern: '^\\{.*"type"\\s*:.*\\}$',
+        delay: 100,
+        responseMode: 'advanced',
+        responseBasic: '',
+        responseAdvanced: [
+          'function main(message, Mock) {',
+          '  // 解析收到的 JSON 消息，根据 type 字段返回不同响应',
+          '  let parsed;',
+          '  try { parsed = JSON.parse(message); } catch(e) { return { error: "JSON 解析失败" }; }',
+          '',
+          '  if (parsed.type === "user.info") {',
+          '    // 使用 Mock.js 生成随机用户数据',
+          '    return Mock.mock({',
+          '      type: "user.info.response",',
+          '      data: {',
+          '        "id|1-1000": 1,',
+          '        name: "@cname",',
+          '        email: "@email",',
+          '        avatar: "@image(200x200)",',
+          '        "age|18-60": 1',
+          '      }',
+          '    });',
+          '  }',
+          '',
+          '  if (parsed.type === "chat.send") {',
+          '    return {',
+          '      type: "chat.receive",',
+          '      from: "MockBot",',
+          '      content: "收到你的消息: " + (parsed.content || ""),',
+          '      timestamp: Date.now()',
+          '    };',
+          '  }',
+          '',
+          '  return { type: "echo", original: parsed, serverTime: Date.now() };',
+          '}',
+        ].join('\n'),
+      },
+      {
+        id: now + 4,
+        name: '默认回复 (任意匹配)',
+        active: true,
+        matchType: 'any',
+        matchPattern: '',
+        delay: 0,
+        responseMode: 'basic',
+        responseBasic: JSON.stringify({ type: 'echo', message: '收到消息，但没有匹配到特定规则', tip: '试试发送 ping、hello 或 JSON 格式消息' }),
+        responseAdvanced: '',
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/**
+ * 将 WS 服务配置保存到 uTools 数据库
+ * @param {Array} servers - WS 服务配置数组
+ */
+function saveWsServers(servers) {
+  const doc = utools.db.get(DB_WS_KEY);
+  if (doc) {
+    utools.db.put({ _id: DB_WS_KEY, data: servers, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: DB_WS_KEY, data: servers });
+  }
+}
+
+/** 运行中的 WS 服务实例映射表，key 为 serverId，value 为 { httpServer, wss, clients } */
+const runningWsServers = new Map();
+/** WS 服务消息日志缓冲，key 为 serverId，value 为日志数组 */
+const wsServerLogs = new Map();
+
+/**
+ * 添加 WS 日志条目
+ * @param {string|number} serverId
+ * @param {object} entry - 日志条目（不含 id）
+ */
+function addWsLog(serverId, entry) {
+  const key = String(serverId);
+  if (!wsServerLogs.has(key)) wsServerLogs.set(key, []);
+  const logs = wsServerLogs.get(key);
+  const logEntry = { id: Date.now() + Math.random(), ...entry };
+  logs.push(logEntry);
+  if (logs.length > WS_LOG_LIMIT) logs.splice(0, logs.length - WS_LOG_LIMIT);
+  return logEntry;
+}
+
+/**
+ * 按顺序匹配 WS 消息规则
+ * @param {string} message - 收到的消息
+ * @param {Array} rules - 规则列表
+ * @returns {object|null} 匹配到的规则，或 null
+ */
+function matchWsRule(message, rules) {
+  if (!rules || !rules.length) return null;
+  for (const rule of rules) {
+    if (!rule.active) continue;
+    switch (rule.matchType) {
+      case 'exact':
+        if (message === rule.matchPattern) return rule;
+        break;
+      case 'contains':
+        if (message.includes(rule.matchPattern)) return rule;
+        break;
+      case 'regex':
+        try { if (new RegExp(rule.matchPattern).test(message)) return rule; } catch (e) { /* ignore bad regex */ }
+        break;
+      case 'any':
+        return rule;
+    }
+  }
+  return null;
+}
+
+/**
+ * 生成 WS 规则的响应内容
+ * @param {object} rule - 匹配到的规则
+ * @param {string} message - 原始消息
+ * @param {string} clientId - 客户端 ID
+ * @param {string} clientIp - 客户端 IP
+ * @returns {Promise<string|null>} 响应字符串
+ */
+async function generateWsResponse(rule, message, clientId, clientIp) {
+  if (rule.responseMode === 'advanced' && rule.responseAdvanced) {
+    try {
+      const script = new vm.Script(rule.responseAdvanced);
+      const sandbox = { message, clientId, clientIp, Mock, console };
+      const context = vm.createContext(sandbox);
+      script.runInContext(context);
+      if (typeof sandbox.main === 'function') {
+        const result = await sandbox.main(message, Mock);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      }
+      return null;
+    } catch (e) {
+      console.error('[WS] Advanced script error:', e.message);
+      return JSON.stringify({ error: 'Script execution failed', message: e.message });
+    }
+  }
+  return rule.responseBasic || null;
+}
+
+/**
+ * 启动 WS Mock 服务
+ * @param {string|number} serverId - WS 服务 ID
+ * @returns {Promise<{success: boolean}>}
+ */
+function startWsServer(serverId) {
+  return new Promise((resolve, reject) => {
+    const sid = String(serverId);
+    if (runningWsServers.has(sid)) {
+      return resolve({ success: true, msg: 'Already running' });
+    }
+
+    const servers = getWsServers();
+    const config = servers.find(s => String(s.id) === sid);
+    if (!config) return reject(new Error('WS server config not found'));
+
+    const httpServer = http.createServer();
+    const wsPath = config.path && config.path.startsWith('/') ? config.path : '/' + (config.path || '');
+    const wss = new WebSocket.Server({ server: httpServer, path: wsPath });
+
+    /** 已连接客户端 Map: clientId -> { ws, ip, connectedAt } */
+    const clients = new Map();
+    let clientCounter = 0;
+
+    wss.on('connection', (ws, req) => {
+      clientCounter++;
+      const clientId = `client_${Date.now()}_${clientCounter}`;
+      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+      clients.set(clientId, { ws, ip: clientIp, connectedAt: Date.now() });
+
+      addWsLog(sid, {
+        serverId: Number(serverId), timestamp: Date.now(), direction: 'system',
+        clientId, clientIp, message: `客户端已连接 (${clientIp})`
+      });
+      console.log(`[WS:${config.port}] Client connected: ${clientId} (${clientIp})`);
+
+      // 发送欢迎消息
+      if (config.onConnectMessage) {
+        ws.send(config.onConnectMessage);
+        addWsLog(sid, {
+          serverId: Number(serverId), timestamp: Date.now(), direction: 'out',
+          clientId, clientIp, message: config.onConnectMessage, matchedRule: '欢迎消息'
+        });
+      }
+
+      ws.on('message', async (data) => {
+        const message = data.toString();
+        addWsLog(sid, {
+          serverId: Number(serverId), timestamp: Date.now(), direction: 'in',
+          clientId, clientIp, message
+        });
+
+        // 重新读取最新规则配置
+        const latestServers = getWsServers();
+        const latestConfig = latestServers.find(s => String(s.id) === sid);
+        const rules = latestConfig ? latestConfig.rules : [];
+        const matched = matchWsRule(message, rules);
+
+        if (matched) {
+          const delay = matched.delay || 0;
+          if (delay > 0) await new Promise(r => setTimeout(r, delay));
+
+          const response = await generateWsResponse(matched, message, clientId, clientIp);
+          if (response !== null && ws.readyState === WebSocket.OPEN) {
+            ws.send(response);
+            addWsLog(sid, {
+              serverId: Number(serverId), timestamp: Date.now(), direction: 'out',
+              clientId, clientIp, message: response, matchedRule: matched.name
+            });
+          }
+        }
+      });
+
+      ws.on('close', () => {
+        clients.delete(clientId);
+        addWsLog(sid, {
+          serverId: Number(serverId), timestamp: Date.now(), direction: 'system',
+          clientId, clientIp, message: `客户端已断开`
+        });
+        console.log(`[WS:${config.port}] Client disconnected: ${clientId}`);
+      });
+
+      ws.on('error', (err) => {
+        addWsLog(sid, {
+          serverId: Number(serverId), timestamp: Date.now(), direction: 'system',
+          clientId, clientIp, message: `错误: ${err.message}`
+        });
+      });
+    });
+
+    httpServer.listen(config.port, '0.0.0.0', () => {
+      console.log(`[WS] Server started: ws://${LOCAL_IP}:${config.port}${wsPath}`);
+      runningWsServers.set(sid, { httpServer, wss, clients });
+      resolve({ success: true, ip: LOCAL_IP, port: config.port, path: wsPath });
+    });
+    httpServer.on('error', (err) => reject(err));
+  });
+}
+
+/**
+ * 停止 WS Mock 服务
+ * @param {string|number} serverId
+ * @returns {boolean}
+ */
+function stopWsServer(serverId) {
+  const sid = String(serverId);
+  const entry = runningWsServers.get(sid);
+  if (!entry) return false;
+
+  // 关闭所有客户端连接
+  for (const [, client] of entry.clients) {
+    try { client.ws.close(); } catch (e) { /* ignore */ }
+  }
+  entry.wss.close();
+  entry.httpServer.close();
+  runningWsServers.delete(sid);
+  console.log(`[WS] Server stopped: ${sid}`);
+  return true;
+}
+
+/* -------------------- WS Admin API -------------------- */
+
+/** GET /_admin/ws/servers - 获取所有 WS 服务配置 */
+adminApp.get('/_admin/ws/servers', (req, res) => {
+  res.json(getWsServers());
+});
+
+/** POST /_admin/ws/server/save - 创建/更新 WS 服务 */
+adminApp.post('/_admin/ws/server/save', (req, res) => {
+  const server = req.body;
+  if (!server.name || !server.port) {
+    return res.status(400).json({ error: 'Name and port are required' });
+  }
+  const servers = getWsServers();
+  const idx = servers.findIndex(s => s.id === server.id);
+  if (idx !== -1) {
+    servers[idx] = { ...servers[idx], ...server, id: servers[idx].id, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    servers.push({ ...server, id: now, rules: server.rules || [], createdAt: now, updatedAt: now });
+  }
+  saveWsServers(servers);
+  res.json({ success: true, data: servers });
+});
+
+/** POST /_admin/ws/server/delete - 删除 WS 服务 */
+adminApp.post('/_admin/ws/server/delete', (req, res) => {
+  const { id } = req.body;
+  stopWsServer(id); // 自动停止运行中的服务
+  const servers = getWsServers().filter(s => s.id !== id);
+  saveWsServers(servers);
+  res.json({ success: true, data: servers });
+});
+
+/** POST /_admin/ws/server/start - 启动 WS 服务 */
+adminApp.post('/_admin/ws/server/start', async (req, res) => {
+  try {
+    const result = await startWsServer(req.body.id);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /_admin/ws/server/stop - 停止 WS 服务 */
+adminApp.post('/_admin/ws/server/stop', (req, res) => {
+  stopWsServer(req.body.id);
+  res.json({ success: true });
+});
+
+/** GET /_admin/ws/server/status - 获取所有 WS 服务运行状态 */
+adminApp.get('/_admin/ws/server/status', (req, res) => {
+  const status = {};
+  for (const [sid, info] of runningWsServers) {
+    status[sid] = { running: true, clientCount: info.clients.size };
+  }
+  res.json(status);
+});
+
+/** GET /_admin/ws/server/:id/clients - 获取连接的客户端列表 */
+adminApp.get('/_admin/ws/server/:id/clients', (req, res) => {
+  const sid = String(req.params.id);
+  const entry = runningWsServers.get(sid);
+  if (!entry) return res.json([]);
+  const list = [];
+  for (const [clientId, info] of entry.clients) {
+    list.push({ clientId, clientIp: info.ip, connectedAt: info.connectedAt });
+  }
+  res.json(list);
+});
+
+/** GET /_admin/ws/server/:id/logs - 获取消息日志（支持 ?since=timestamp 增量获取） */
+adminApp.get('/_admin/ws/server/:id/logs', (req, res) => {
+  const sid = String(req.params.id);
+  const logs = wsServerLogs.get(sid) || [];
+  const since = req.query.since ? Number(req.query.since) : 0;
+  if (since > 0) {
+    res.json(logs.filter(l => l.timestamp > since));
+  } else {
+    res.json(logs);
+  }
+});
+
+/** POST /_admin/ws/server/:id/send - 手动发送消息 */
+adminApp.post('/_admin/ws/server/:id/send', (req, res) => {
+  const sid = String(req.params.id);
+  const { clientId, message } = req.body;
+  const entry = runningWsServers.get(sid);
+  if (!entry) return res.status(400).json({ error: 'Server not running' });
+
+  let sent = 0;
+  if (clientId && clientId !== '__all__') {
+    // 发送给指定客户端
+    const client = entry.clients.get(clientId);
+    if (client && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      addWsLog(sid, {
+        serverId: Number(req.params.id), timestamp: Date.now(), direction: 'out',
+        clientId, clientIp: client.ip, message, matchedRule: '手动发送'
+      });
+      sent = 1;
+    }
+  } else {
+    // 广播给所有客户端
+    for (const [cid, client] of entry.clients) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(message);
+        addWsLog(sid, {
+          serverId: Number(req.params.id), timestamp: Date.now(), direction: 'out',
+          clientId: cid, clientIp: client.ip, message, matchedRule: '广播'
+        });
+        sent++;
+      }
+    }
+  }
+  res.json({ success: true, sent });
+});
+
+/** POST /_admin/ws/server/:id/disconnect - 断开指定客户端 */
+adminApp.post('/_admin/ws/server/:id/disconnect', (req, res) => {
+  const sid = String(req.params.id);
+  const { clientId } = req.body;
+  const entry = runningWsServers.get(sid);
+  if (!entry) return res.status(400).json({ error: 'Server not running' });
+
+  const client = entry.clients.get(clientId);
+  if (client) {
+    try { client.ws.close(); } catch (e) { /* ignore */ }
+    entry.clients.delete(clientId);
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Client not found' });
+  }
 });
 
 /** 启动 Admin 管理服务器，监听所有网络接口 */
