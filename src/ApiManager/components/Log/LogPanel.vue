@@ -45,8 +45,9 @@ function formatTime(ts: number) {
   return d.toLocaleString('zh-CN', { hour12: false });
 }
 
-function methodTagType(method: string) {
-  const map: Record<string, string> = { GET: 'success', POST: 'warning', PUT: '', DELETE: 'danger' };
+type TagType = 'info' | 'primary' | 'success' | 'warning' | 'danger';
+function methodTagType(method: string): TagType {
+  const map: Record<string, TagType> = { GET: 'success', POST: 'warning', PUT: 'info', DELETE: 'danger' };
   return map[method] || 'info';
 }
 

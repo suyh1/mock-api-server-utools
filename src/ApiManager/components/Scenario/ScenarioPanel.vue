@@ -36,8 +36,9 @@ async function saveData() {
   }
 }
 
-function methodTagType(method: string) {
-  const map: Record<string, string> = { GET: 'success', POST: 'warning', PUT: '', DELETE: 'danger' };
+type TagType = 'info' | 'primary' | 'success' | 'warning' | 'danger';
+function methodTagType(method: string): TagType {
+  const map: Record<string, TagType> = { GET: 'success', POST: 'warning', PUT: 'info', DELETE: 'danger' };
   return map[method] || 'info';
 }
 
@@ -182,7 +183,7 @@ const groupsWithRules = computed(() => groups.value.filter(g => g.children.lengt
             <el-radio-group
               :model-value="getActivePresetId(rule) ?? 0"
               size="small"
-              @change="(val: number) => setActivePreset(rule, val === 0 ? undefined : val)"
+              @change="(val: string | number | boolean | undefined) => setActivePreset(rule, val === 0 ? undefined : val as number)"
             >
               <el-radio-button :value="0">默认</el-radio-button>
               <el-radio-button

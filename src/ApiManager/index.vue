@@ -12,7 +12,7 @@
  * - 管理深色模式切换逻辑（同步 document.documentElement 的 class）
  */
 <script setup lang="ts">
-import { ref, computed, provide } from 'vue';
+import { ref, computed, provide, type Ref, type Component } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ProjectPanel from './components/Project/ProjectPanel.vue';
@@ -41,7 +41,7 @@ const isDark = ref((() => {
   } catch {}
   return false;
 })());
-provide('isDark', isDark);
+provide<Ref<boolean>>('isDark', isDark);
 
 // 初始化时同步 HTML class
 if (isDark.value) {
@@ -75,6 +75,8 @@ const handleThemeChange = (dark: boolean) => {
   applyDark(dark);
 };
 
+const userFilledIcon: Component = UserFilled;
+
 /** 根据当前激活标签页计算页面标题文本 */
 const currentTitle = computed(() => {
   const map: Record<string, string> = {
@@ -105,7 +107,7 @@ const currentTitle = computed(() => {
       <header class="app-header">
         <div class="header-left">
           <div class="avatar-container">
-            <el-avatar :size="24" :icon="UserFilled" class="user-avatar" />
+            <el-avatar :size="24" :icon="userFilledIcon" class="user-avatar" />
           </div>
           <span class="page-title">{{ currentTitle }}</span>
         </div>
@@ -159,7 +161,7 @@ const currentTitle = computed(() => {
           <div v-if="activeTab === 'about'" class="placeholder-module">
             <div class="about-content">
               <h2>Mock API Server</h2>
-              <p class="about-version">v1.4.0</p>
+              <p class="about-version">v1.6.0</p>
               <p class="about-desc">一款集 Mock 服务与接口管理于一体的 uTools 插件。支持多分组管理、自定义响应数据、真实接口代理调试、数据模板复用，以及多种响应类型（JSON、文件等）。</p>
               <div class="about-author">
                 <p>作者：subeipo</p>
