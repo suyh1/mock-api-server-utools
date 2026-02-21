@@ -12,7 +12,7 @@
  * - 管理深色模式切换逻辑（同步 document.documentElement 的 class）
  */
 <script setup lang="ts">
-import { ref, computed, provide, type Ref, type Component } from 'vue';
+import { ref, computed, provide, markRaw, type Ref, type Component } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ProjectPanel from './components/Project/ProjectPanel.vue';
@@ -76,7 +76,7 @@ const handleThemeChange = (dark: boolean) => {
   applyDark(dark);
 };
 
-const userFilledIcon: Component = UserFilled;
+const userFilledIcon = markRaw(UserFilled) as Component;
 
 /** 根据当前激活标签页计算页面标题文本 */
 const currentTitle = computed(() => {
