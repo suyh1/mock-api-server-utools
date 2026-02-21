@@ -93,6 +93,15 @@ const currentTitle = computed(() => {
   };
   return map[activeTab.value] || '应用';
 });
+/** 用默认浏览器打开 GitHub 仓库 */
+const openGithub = () => {
+  const url = 'https://github.com/suyh1/mock-api-server-utools';
+  if ((window as any).utools?.shellOpenExternal) {
+    (window as any).utools.shellOpenExternal(url);
+  } else {
+    window.open(url, '_blank');
+  }
+};
 </script>
 
 <template>
@@ -168,11 +177,19 @@ const currentTitle = computed(() => {
           <div v-if="activeTab === 'about'" class="placeholder-module">
             <div class="about-content">
               <h2>Mock API Server</h2>
-              <p class="about-version">v1.6.0</p>
-              <p class="about-desc">一款集 Mock 服务与接口管理于一体的 uTools 插件。支持多分组管理、自定义响应数据、真实接口代理调试、数据模板复用，以及多种响应类型（JSON、文件等）。</p>
+              <p class="about-version">v1.6.2</p>
+              <p class="about-desc">一款集 Mock 服务与接口管理于一体的 uTools 插件。支持多项目多分组管理、基础/高级双模式响应、Mock.js 数据模板与智能生成、真实接口代理调试、WebSocket Mock、场景切换、请求日志、数据模板复用，以及 30+ 内置开发工具。</p>
               <div class="about-author">
                 <p>作者：subeipo</p>
                 <p>邮箱：suyhem@163.com</p>
+                <p class="about-github">
+                  <a href="javascript:void(0)" @click="openGithub" title="GitHub">
+                    <svg class="github-icon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+                      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                    </svg>
+                    <span>GitHub</span>
+                  </a>
+                </p>
               </div>
             </div>
           </div>
@@ -311,6 +328,17 @@ const currentTitle = computed(() => {
 .about-desc { font-size: 13px; line-height: 1.8; max-width: 360px; margin: 0 auto 20px; }
 .about-author { font-size: 13px; padding-top: 16px; border-top: 1px solid var(--border-color); }
 .about-author p { margin: 4px 0; }
+
+.about-github a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.about-github a:hover { color: var(--text-primary); }
+.github-icon { vertical-align: middle; }
 
 .full-height-module {
   height: 100%;
