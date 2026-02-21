@@ -48,6 +48,8 @@ export interface MockRule {
     responseBasic: string;           // 基础模式内容 (原 response)
     responseAdvanced: string;        // 高级模式脚本
     responseFile?: string;           // 二进制类型的本地文件路径
+    responsePresets?: ResponsePreset[];
+    activePresetId?: number;           // undefined = 使用默认响应
 }
 
 export interface ServiceConfig {
@@ -97,6 +99,37 @@ export interface Project {
     tags?: string[];                 // 项目标签
     createdAt: number;
     updatedAt: number;
+}
+
+// 请求日志
+export interface RequestLog {
+  id: number;
+  timestamp: number;
+  method: HttpMethod;
+  url: string;
+  status: number;
+  statusText: string;
+  duration: number;
+  mode: 'mock' | 'real';
+  ruleId?: number;
+  ruleName?: string;
+  groupName?: string;
+  requestHeaders?: Record<string, string>;
+  requestBody?: string;
+  responseHeaders?: Record<string, string>;
+  responseBody?: string;
+  error?: string;
+}
+
+// 响应预设
+export interface ResponsePreset {
+  id: number;
+  name: string;
+  statusCode: number;
+  responseMode: ResponseMode;
+  responseType: string;
+  responseBasic: string;
+  responseAdvanced: string;
 }
 
 // 测试结果中的文件信息（用于二进制响应下载）

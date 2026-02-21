@@ -20,6 +20,8 @@ import ApiPanel from './components/Api/ApiPanel.vue';
 import TemplateManager from './components/Template/TemplateManager.vue';
 import ToolsPanel from './components/Tools/ToolsPanel.vue';
 import SettingsPanel from './components/Settings/SettingsPanel.vue';
+import LogPanel from './components/Log/LogPanel.vue';
+import ScenarioPanel from './components/Scenario/ScenarioPanel.vue';
 import { useSettings, settingsKey } from '@/composables/useSettings';
 
 /** 全局设置（持久化到 localStorage） */
@@ -80,6 +82,8 @@ const currentTitle = computed(() => {
     api: '接口管理',
     template: '数据模板',
     tools: '开发工具',
+    log: '请求日志',
+    scenario: '场景管理',
     settings: '全局设置',
     about: '关于软件'
   };
@@ -134,6 +138,16 @@ const currentTitle = computed(() => {
           <!-- 开发工具面板 -->
           <div v-if="activeTab === 'tools'" class="full-height-module">
             <ToolsPanel />
+          </div>
+
+          <!-- 请求日志面板 -->
+          <div v-if="activeTab === 'log'" class="full-height-module">
+            <LogPanel />
+          </div>
+
+          <!-- 场景管理面板 -->
+          <div v-if="activeTab === 'scenario'" class="full-height-module">
+            <ScenarioPanel />
           </div>
 
           <!-- 全局设置 -->

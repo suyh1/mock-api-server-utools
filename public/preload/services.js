@@ -194,14 +194,32 @@ function startGroupServer(rawGroupId, port, prefix) {
           if (h.key && h.value) res.setHeader(h.key, h.value);
         });
 
-        // 4. 生成响应数据（核心逻辑：区分基础模式和高级模式）
+        // 4. 预设覆盖：如果有激活的预设，用预设配置替代默认响应
+        let activeMode = matchedRule.responseMode || 'basic';
+        let activeResponseType = matchedRule.responseType || 'application/json';
+        let activeResponseBasic = matchedRule.responseBasic;
+        let activeResponseAdvanced = matchedRule.responseAdvanced;
+        let activeStatusCode = 200;
+
+        if (matchedRule.activePresetId && matchedRule.responsePresets) {
+          const preset = matchedRule.responsePresets.find(p => p.id === matchedRule.activePresetId);
+          if (preset) {
+            activeMode = preset.responseMode || 'basic';
+            activeResponseType = preset.responseType || 'application/json';
+            activeResponseBasic = preset.responseBasic;
+            activeResponseAdvanced = preset.responseAdvanced;
+            activeStatusCode = preset.statusCode || 200;
+            console.log(`[Group ${groupId}] Using preset: ${preset.name} (${activeStatusCode})`);
+          }
+        }
+
+        // 5. 生成响应数据（核心逻辑：区分基础模式和高级模式）
         try {
           let responseData;
-          const mode = matchedRule.responseMode || 'basic'; // 响应模式：basic（基础）或 advanced（高级）
 
-          if (mode === 'advanced' && matchedRule.responseAdvanced) {
+          if (activeMode === 'advanced' && activeResponseAdvanced) {
             // --- 高级模式：通过 VM 沙箱执行用户自定义脚本 ---
-            const script = new vm.Script(matchedRule.responseAdvanced);
+            const script = new vm.Script(activeResponseAdvanced);
             const sandbox = {
               req: {
                 query: req.query,
@@ -223,11 +241,11 @@ function startGroupServer(rawGroupId, port, prefix) {
               throw new Error('Main function not defined in script');
             }
             // 高级模式默认返回 JSON 格式
-            res.status(200).json(responseData);
+            res.status(activeStatusCode).json(responseData);
 
           } else {
             // --- 基础模式：根据 Content-Type 返回配置的响应内容 ---
-            const contentType = matchedRule.responseType || 'application/json';
+            const contentType = activeResponseType || 'application/json';
             res.setHeader('Content-Type', contentType);
 
             // 二进制文件类型列表：直接读取本地文件返回
@@ -249,13 +267,13 @@ function startGroupServer(rawGroupId, port, prefix) {
                 // 为下载类型设置文件名
                 const fileName = path.basename(filePath);
                 res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
-                res.status(200).send(fileBuffer);
+                res.status(activeStatusCode).send(fileBuffer);
               } catch (e) {
                 res.status(500).json({ error: 'Failed to read response file', message: e.message });
               }
             } else {
-              const bodyStr = matchedRule.responseBasic || '{}';
-              res.status(200).send(bodyStr);
+              const bodyStr = activeResponseBasic || '{}';
+              res.status(activeStatusCode).send(bodyStr);
             }
           }
 

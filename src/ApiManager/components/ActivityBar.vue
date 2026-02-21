@@ -4,7 +4,7 @@
  * 通过 v-model 双向绑定当前选中的 tab，点击切换主内容区域。
  */
 <script setup lang="ts">
-import { Connection, DocumentCopy, Setting, InfoFilled, Briefcase, FolderOpened } from '@element-plus/icons-vue';
+import { Connection, DocumentCopy, Setting, InfoFilled, Briefcase, FolderOpened, Tickets, Operation } from '@element-plus/icons-vue';
 import type { Component } from 'vue';
 
 /** 当前选中的导航项 key，支持 v-model 双向绑定 */
@@ -22,6 +22,8 @@ const menuItems: NavItem[] = [
   { key: 'api', label: '接口', icon: Connection },
   { key: 'template', label: '模板', icon: DocumentCopy },
   { key: 'tools', label: '工具', icon: Briefcase },
+  { key: 'log', label: '日志', icon: Tickets },
+  { key: 'scenario', label: '场景', icon: Operation },
 ];
 
 /** 底部辅助菜单项列表：设置、关于 */
