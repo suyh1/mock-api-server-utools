@@ -842,7 +842,7 @@ onMounted(() => {
 .full-height { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 
 /* 接口面板 */
-.interface-panel { display: flex; flex-direction: column; height: 100%; }
+.interface-panel { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
 /* 地址区块：包裹输入行 + 预览行 */
 .addr-section {
@@ -882,7 +882,7 @@ onMounted(() => {
 .addr-sep { color: var(--text-secondary); font-size: 13px; font-family: monospace; flex-shrink: 0; }
 .addr-actions { padding: 4px 10px; display: flex; justify-content: flex-end; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); }
 .url-input { flex: 1; }
-.sub-tabs { flex: 1; display: flex; flex-direction: column; }
+.sub-tabs { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 :deep(.el-tabs__header) { margin: 0; padding: 0 12px; }
 :deep(.el-tabs__content) { flex: 1; overflow: auto; padding: 12px; }
 
