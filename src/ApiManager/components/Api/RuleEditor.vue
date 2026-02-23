@@ -847,38 +847,29 @@ onMounted(() => {
 
         <!-- ========== Tab 1: 接口定义面板 ========== -->
         <div v-show="mainTab === 'interface'" class="interface-panel">
-          <!-- 接口名称 + Mock 地址区 -->
-          <div class="addr-section">
-            <div class="addr-row">
-              <span class="addr-tag name">名称</span>
-              <el-input v-model="rule.name" placeholder="接口名称（选填）" class="url-input" />
-            </div>
-          </div>
-
-          <!-- Mock 地址区 -->
-          <div class="addr-section">
-            <div class="addr-row">
-              <span class="addr-tag mock">Mock</span>
+          <!-- 接口定义头部：统一区域 -->
+          <div class="interface-header">
+            <!-- 第一行：方法 + 名称 + 保存按钮 -->
+            <div class="header-row">
               <el-select v-model="rule.method" style="width: 90px" size="default">
                 <el-option value="GET" /><el-option value="POST" /><el-option value="PUT" /><el-option value="DELETE" />
               </el-select>
+              <el-input v-model="rule.name" placeholder="接口名称（选填）" class="url-input" />
+              <el-button :type="saveSuccess ? 'info' : 'success'" :icon="Check" @click="handleSave">{{ saveSuccess ? '已保存 ✓' : '保存' }}</el-button>
+            </div>
+            <!-- 第二行：Mock 路径 -->
+            <div class="header-row">
+              <span class="addr-tag mock">Mock</span>
               <el-input v-model="rule.url" placeholder="/api/path" class="url-input" />
               <el-button type="primary" plain :icon="CopyDocument" @click="$emit('copy')" title="复制Mock地址" />
             </div>
+            <!-- Mock URL 预览 -->
             <div v-if="rule.url" class="addr-url-preview" @click="$emit('copy')" title="点击复制完整地址">
-              {{ mockUrlFull }}
+              → {{ mockUrlFull }}
             </div>
-            <!-- 路径参数标签 -->
-            <div v-if="detectedPathParams.length" class="path-params-tags">
-              <span class="path-params-label">路径参数：</span>
-              <el-tag v-for="p in detectedPathParams" :key="p" size="small" type="info" effect="plain">:{{ p }}</el-tag>
-            </div>
-          </div>
-
-          <!-- 真实地址区 -->
-          <div class="addr-section">
-            <div class="addr-row">
-              <span class="addr-tag real">真实</span>
+            <!-- 第三行：Real 路径 + 操作按钮 -->
+            <div class="header-row">
+              <span class="addr-tag real">Real</span>
               <el-input v-model="realPath" placeholder="/api/path" class="url-input" />
               <el-button plain :icon="CopyDocument" @click="handleCopyRealUrl" title="复制真实地址" />
               <el-button plain :icon="DocumentCopy" @click="handlePasteRealUrl" title="粘贴并解析URL" />
@@ -886,6 +877,7 @@ onMounted(() => {
                 <el-icon :size="14"><component :is="showRealDetail ? ArrowDown : ArrowRight" /></el-icon>
               </el-button>
             </div>
+            <!-- Real 详细配置（条件展开） -->
             <div v-if="showRealDetail" class="addr-detail-row">
               <el-select v-model="realProtocol" style="width: 78px" size="small">
                 <el-option label="http" value="http" />
@@ -898,36 +890,30 @@ onMounted(() => {
               <span class="addr-sep">/</span>
               <el-input v-model="realPrefix" placeholder="前缀" size="small" style="flex: 1; min-width: 60px" />
             </div>
+            <!-- Real URL 预览 -->
             <div v-if="realUrlFull" class="addr-url-preview" @click="handleCopyRealUrl" title="点击复制完整地址">
-              {{ realUrlFull }}
+              → {{ realUrlFull }}
             </div>
-          </div>
-
-          <!-- 配置行：延迟 + Mock.js 开关 -->
-          <div class="config-row">
-            <div class="config-item">
-              <span class="config-label">延迟 (ms)：</span>
-              <el-input-number v-model="rule.delay" :min="0" :max="30000" :step="100" size="small" controls-position="right" style="width: 110px" />
-              <span class="config-sep">~</span>
-              <el-input-number v-model="rule.delayMax" :min="0" :max="30000" :step="100" size="small" controls-position="right" style="width: 110px" placeholder="最大值" />
-              <el-tooltip content="设置最大值后，延迟将在 [最小值, 最大值] 范围内随机" placement="top">
-                <el-icon style="color: var(--text-secondary); cursor: help; margin-left: 2px"><Warning /></el-icon>
-              </el-tooltip>
+            <!-- 路径参数标签 -->
+            <div v-if="detectedPathParams.length" class="path-params-tags">
+              <span class="path-params-label">路径参数：</span>
+              <el-tag v-for="p in detectedPathParams" :key="p" size="small" type="info" effect="plain">:{{ p }}</el-tag>
             </div>
-            <div class="config-item" v-if="rule.responseMode === 'basic'">
-              <el-tooltip content="启用后，基础模式的 JSON 响应将通过 Mock.js 处理，支持 @cname、@email 等语法" placement="top">
-                <el-checkbox v-model="rule.mockjsEnabled" label="Mock.js 增强" size="small" border />
-              </el-tooltip>
+            <!-- 配置行（虚线分隔） -->
+            <div class="header-config-row">
+              <div class="config-item">
+                <span class="config-label">延迟:</span>
+                <el-input-number v-model="rule.delay" :min="0" :max="30000" :step="100" size="small" controls-position="right" style="width: 100px" />
+                <span class="config-sep">~</span>
+                <el-input-number v-model="rule.delayMax" :min="0" :max="30000" :step="100" size="small" controls-position="right" style="width: 100px" placeholder="最大值" />
+                <el-tooltip content="设置最大值后，延迟将在 [最小值, 最大值] 范围内随机" placement="top">
+                  <el-icon style="color: var(--text-secondary); cursor: help; margin-left: 2px"><Warning /></el-icon>
+                </el-tooltip>
+              </div>
+              <div v-if="rule.createdAt || rule.updatedAt" class="time-info">
+                <span v-if="rule.updatedAt" title="更新时间">更新: {{ formatTime(rule.updatedAt) }}</span>
+              </div>
             </div>
-          </div>
-
-          <!-- 操作栏：保存按钮 + 时间信息 -->
-          <div class="addr-actions">
-            <div v-if="rule.createdAt || rule.updatedAt" class="time-info">
-              <span v-if="rule.createdAt" title="创建时间">创建: {{ formatTime(rule.createdAt) }}</span>
-              <span v-if="rule.updatedAt" title="更新时间">更新: {{ formatTime(rule.updatedAt) }}</span>
-            </div>
-            <el-button :type="saveSuccess ? 'info' : 'success'" :icon="Check" @click="handleSave">{{ saveSuccess ? '已保存 ✓' : '保存' }}</el-button>
           </div>
 
           <!-- 接口定义子 Tab：请求头 / 请求参数 / 请求体 / 响应头 -->
@@ -1071,7 +1057,7 @@ onMounted(() => {
               </el-radio-group>
             </div>
 
-            <!-- 基础模式下的响应类型（Content-Type）选择器 -->
+            <!-- 基础模式下的响应类型（Content-Type）选择器 + Mock.js 开关 -->
             <div v-if="rule.responseMode === 'basic'" class="type-select">
               <span class="label">响应类型：</span>
               <el-select v-model="rule.responseType" style="width: 180px" filterable>
@@ -1079,6 +1065,9 @@ onMounted(() => {
                   <el-option v-for="t in contentTypes.filter(c => c.group === group)" :key="t.value" :label="t.label" :value="t.value" />
                 </el-option-group>
               </el-select>
+              <el-tooltip content="启用后，JSON 响应将通过 Mock.js 处理，支持 @cname、@email 等语法" placement="top">
+                <el-checkbox v-model="rule.mockjsEnabled" label="Mock.js" size="small" border />
+              </el-tooltip>
             </div>
 
             <div class="template-actions">
@@ -1332,24 +1321,25 @@ interface User {
 /* 接口面板 */
 .interface-panel { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
-/* 地址区块：包裹输入行 + 预览行 */
-.addr-section {
+/* 统一接口头部区域 */
+.interface-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-hover);
 }
-/* 地址输入行 */
-.addr-row {
-  padding: 6px 10px; display: flex; gap: 4px; align-items: center;
+.header-row {
+  display: flex; gap: 4px; align-items: center;
 }
 .addr-tag {
   padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; white-space: nowrap;
 }
-.addr-tag.name { background: #ecf5ff; color: #409EFF; }
 .addr-tag.mock { background: #e1f3d8; color: #67C23A; }
 .addr-tag.real { background: #fdf6ec; color: #E6A23C; }
 /* 完整地址预览行 */
 .addr-url-preview {
-  padding: 0 10px 6px 20px;
+  padding: 0 0 0 10px;
   font-size: 11px;
   font-family: 'Courier New', Courier, monospace;
   color: var(--text-secondary);
@@ -1362,14 +1352,22 @@ interface User {
 .addr-url-preview:hover { color: var(--primary-color); }
 /* 真实地址展开配置行 */
 .addr-detail-row {
-  padding: 2px 10px 6px 20px;
+  padding: 0 0 0 10px;
   display: flex;
   gap: 4px;
   align-items: center;
 }
 .addr-sep { color: var(--text-secondary); font-size: 13px; font-family: monospace; flex-shrink: 0; }
-.addr-actions { padding: 4px 10px; display: flex; justify-content: flex-end; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); }
 .url-input { flex: 1; }
+/* 配置行（虚线分隔） */
+.header-config-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border-color);
+  flex-wrap: wrap;
+}
 .sub-tabs { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 :deep(.el-tabs__header) { margin: 0; padding: 0 12px; }
 :deep(.el-tabs__content) { flex: 1; overflow: auto; padding: 12px; }
@@ -1553,16 +1551,7 @@ interface User {
   color: var(--text-secondary);
 }
 
-/* 配置行 */
-.config-row {
-  padding: 6px 10px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-hover);
-  flex-wrap: wrap;
-}
+/* 配置项 */
 .config-item {
   display: flex;
   align-items: center;

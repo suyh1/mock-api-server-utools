@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject, ref, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { settingsKey, DEFAULT_PRIMARY, DEFAULT_MORE, type SidebarModuleKey } from '@/composables/useSettings';
+import { settingsKey, DEFAULT_PRIMARY, DEFAULT_MORE, FIXED_PRIMARY, type SidebarModuleKey } from '@/composables/useSettings';
 import type { HttpMethod, MockGroup, Project } from '@/types/mock';
 import { parseOpenApiInput, parseOpenApiToMockGroups } from '@/utils/parseOpenApi';
 
@@ -33,15 +33,21 @@ const handleDarkChange = (val: string | number | boolean) => {
 /* ==================== 侧边栏自定义 ==================== */
 
 const moduleLabels: Record<SidebarModuleKey, string> = {
-  dashboard: '📊 看板', project: '📁 项目', api: '🔗 接口', template: '📋 模板',
+  dashboard: '📊 看板', project: '📁 项目', service: '🖥️ 服务', api: '🔗 接口', template: '📋 模板',
   scenario: '🎭 场景', tools: '🔧 工具', environment: '🌐 环境', doc: '📄 文档',
   log: '📜 日志', websocket: '⚡ WS', testrunner: '🧪 测试',
 };
+
+/** 固定模块不可排序 */
+const fixedSet = new Set(FIXED_PRIMARY);
+const fixedCount = FIXED_PRIMARY.length;
+function isFixed(key: SidebarModuleKey) { return fixedSet.has(key); }
 
 /** 拖拽状态 */
 const dragItem = ref<{ key: SidebarModuleKey; from: 'primary' | 'more' } | null>(null);
 
 function onDragStart(key: SidebarModuleKey, from: 'primary' | 'more') {
+  if (isFixed(key)) return;
   dragItem.value = { key, from };
 }
 
@@ -64,6 +70,7 @@ function onDropToMore(e: DragEvent) {
   e.preventDefault();
   if (!dragItem.value) return;
   const { key, from } = dragItem.value;
+  if (isFixed(key)) { dragItem.value = null; return; }
   if (from === 'primary') {
     settings.sidebarPrimary = settings.sidebarPrimary.filter(k => k !== key);
     settings.sidebarMore = [...settings.sidebarMore, key];
@@ -76,11 +83,13 @@ function onDragOver(e: DragEvent) {
 }
 
 function moveItem(key: SidebarModuleKey, from: 'primary' | 'more', dir: -1 | 1) {
+  if (isFixed(key)) return;
   const arr = from === 'primary' ? [...settings.sidebarPrimary] : [...settings.sidebarMore];
   const idx = arr.indexOf(key);
   if (idx < 0) return;
   const target = idx + dir;
   if (target < 0 || target >= arr.length) return;
+  if (from === 'primary' && target < fixedCount) return;
   [arr[idx], arr[target]] = [arr[target], arr[idx]];
   if (from === 'primary') settings.sidebarPrimary = arr;
   else settings.sidebarMore = arr;
@@ -308,13 +317,15 @@ const openGithub = () => {
               <div
                 v-for="(key, i) in settings.sidebarPrimary" :key="key"
                 class="module-chip"
-                draggable="true"
+                :class="{ 'chip-fixed': isFixed(key) }"
+                :draggable="!isFixed(key)"
                 @dragstart="onDragStart(key, 'primary')"
                 @dragend="onDragEnd"
               >
+                <span v-if="isFixed(key)" class="chip-lock">🔒</span>
                 <span class="chip-label">{{ moduleLabels[key] }}</span>
-                <span class="chip-actions">
-                  <button class="chip-btn" :disabled="i === 0" @click="moveItem(key, 'primary', -1)">‹</button>
+                <span v-if="!isFixed(key)" class="chip-actions">
+                  <button class="chip-btn" :disabled="i === fixedCount" @click="moveItem(key, 'primary', -1)">‹</button>
                   <button class="chip-btn" :disabled="i === settings.sidebarPrimary.length - 1" @click="moveItem(key, 'primary', 1)">›</button>
                 </span>
               </div>
@@ -699,6 +710,19 @@ const openGithub = () => {
 }
 
 .module-chip:active { cursor: grabbing; }
+
+.module-chip.chip-fixed {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+  cursor: default;
+  opacity: 0.75;
+}
+
+.chip-lock {
+  font-size: 10px;
+  margin-right: 2px;
+}
 
 .module-chip.chip-secondary {
   background: var(--bg-hover);

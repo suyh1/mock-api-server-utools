@@ -10,7 +10,7 @@
  */
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
-import { Plus, Edit, Delete, Search, Rank, DocumentCopy } from '@element-plus/icons-vue';
+import { Plus, Edit, Delete, Search, Rank, DocumentCopy, ArrowRight } from '@element-plus/icons-vue';
 import type { MockService, MockServiceGroup, MockRule, Project } from '@/types/mock';
 import { TagType } from "@/types/groupSideBar";
 
@@ -39,10 +39,21 @@ const emit = defineEmits<{
   (e: 'batch-action', action: string, ruleIds: number[]): void;
 }>();
 
-/** 展开的服务 ID 列表 */
-const expandedServiceIds = ref<number[]>([]);
-/** 展开的分组 key 列表（格式：serviceId_groupId） */
-const expandedGroupKeys = ref<string[]>([]);
+/** 展开的服务 ID 集合 */
+const expandedServiceIds = ref<Set<number>>(new Set());
+/** 展开的分组 key 集合（格式：serviceId_groupId） */
+const expandedGroupKeys = ref<Set<string>>(new Set());
+
+const toggleService = (id: number) => {
+  const s = expandedServiceIds.value;
+  if (s.has(id)) s.delete(id); else s.add(id);
+};
+const toggleGroup = (key: string) => {
+  const s = expandedGroupKeys.value;
+  if (s.has(key)) s.delete(key); else s.add(key);
+};
+const isServiceExpanded = (id: number) => expandedServiceIds.value.has(id);
+const isGroupExpanded = (key: string) => expandedGroupKeys.value.has(key);
 
 // --- 搜索 ---
 const searchKeyword = ref('');
@@ -90,9 +101,9 @@ const filteredServices = computed(() => {
 
 watch(() => filteredServices.value, (newVal) => {
   if (newVal && newVal.length > 0) {
-    expandedServiceIds.value = newVal.map(s => s.id);
-    const keys: string[] = [];
-    newVal.forEach(s => s.groups.forEach(g => keys.push(`${s.id}_${g.id}`)));
+    expandedServiceIds.value = new Set(newVal.map(s => s.id));
+    const keys = new Set<string>();
+    newVal.forEach(s => s.groups.forEach(g => keys.add(`${s.id}_${g.id}`)));
     expandedGroupKeys.value = keys;
   }
 }, { immediate: true });
@@ -303,45 +314,45 @@ if (typeof document !== 'undefined') {
 
     <!-- 三层树结构：服务 → 分组 → 接口 -->
     <el-scrollbar>
-      <div class="group-wrapper">
-        <el-collapse v-model="expandedServiceIds">
-          <el-collapse-item v-for="service in filteredServices" :key="service.id" :name="service.id">
-            <!-- 服务层标题 -->
-            <template #title>
-              <div class="service-title-content">
-                <span class="service-status-dot" :class="{ running: isServiceRunning(service.id) }"></span>
-                <span class="service-name">{{ service.name }}</span>
-                <el-tag size="small" effect="plain" type="info" class="port-tag">:{{ service.port }}</el-tag>
+      <div class="tree-wrapper">
+        <template v-for="service in filteredServices" :key="service.id">
+          <!-- 服务节点 -->
+          <div class="tree-node service-node" @click="toggleService(service.id)">
+            <el-icon class="tree-arrow" :class="{ expanded: isServiceExpanded(service.id) }"><ArrowRight /></el-icon>
+            <span class="service-status-dot" :class="{ running: isServiceRunning(service.id) }"></span>
+            <span class="service-name">{{ service.name }}</span>
+            <el-tag size="small" effect="plain" type="info" class="port-tag">:{{ service.port }}</el-tag>
+          </div>
+
+          <!-- 分组层 -->
+          <template v-if="isServiceExpanded(service.id)">
+            <template v-for="(group, gIdx) in service.groups" :key="group.id">
+              <!-- 分组节点 -->
+              <div class="tree-node group-node" @click="toggleGroup(`${service.id}_${group.id}`)">
+                <el-icon class="tree-arrow" :class="{ expanded: isGroupExpanded(`${service.id}_${group.id}`) }"><ArrowRight /></el-icon>
+                <span class="group-name">{{ group.name }}</span>
+                <span v-if="group.subPrefix" class="group-prefix">{{ group.subPrefix }}</span>
+                <span class="group-count">({{ group.children.length }})</span>
+                <div class="group-btns">
+                  <el-button link type="primary" @click.stop="$emit('rule-add', service, group)" title="新增接口">
+                    <el-icon><Plus /></el-icon>
+                  </el-button>
+                  <el-button link type="info" @click.stop="openCurlImport(service, group)" title="从 cURL 导入">
+                    <el-icon><DocumentCopy /></el-icon>
+                  </el-button>
+                  <el-button link type="warning" @click.stop="$emit('group-rename', service, group)" title="重命名">
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                  <el-button link type="danger" @click.stop="$emit('group-delete', service, gIdx)" title="删除分组">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
               </div>
-            </template>
 
-            <!-- 分组层 -->
-            <el-collapse v-model="expandedGroupKeys" class="group-collapse">
-              <el-collapse-item v-for="(group, gIdx) in service.groups" :key="group.id" :name="`${service.id}_${group.id}`">
-                <template #title>
-                  <div class="group-title-content">
-                    <span class="group-name">{{ group.name }}</span>
-                    <span v-if="group.subPrefix" class="group-prefix">{{ group.subPrefix }}</span>
-                    <span class="group-count">({{ group.children.length }})</span>
-                    <div class="group-btns">
-                      <el-button link type="primary" @click.stop="$emit('rule-add', service, group)" title="新增接口">
-                        <el-icon><Plus /></el-icon>
-                      </el-button>
-                      <el-button link type="info" @click.stop="openCurlImport(service, group)" title="从 cURL 导入">
-                        <el-icon><DocumentCopy /></el-icon>
-                      </el-button>
-                      <el-button link type="warning" @click.stop="$emit('group-rename', service, group)" title="重命名">
-                        <el-icon><Edit /></el-icon>
-                      </el-button>
-                      <el-button link type="danger" @click.stop="$emit('group-delete', service, gIdx)" title="删除分组">
-                        <el-icon><Delete /></el-icon>
-                      </el-button>
-                    </div>
-                  </div>
-                </template>
-
+              <!-- 接口层 -->
+              <template v-if="isGroupExpanded(`${service.id}_${group.id}`)">
                 <!-- 批量模式工具栏 -->
-                <div v-if="batchMode" class="batch-group-bar">
+                <div v-if="batchMode" class="batch-group-bar" style="padding-left: 36px">
                   <el-button link size="small" @click="isAllSelectedInGroup(group) ? deselectAllInGroup(group) : selectAllInGroup(group)">
                     {{ isAllSelectedInGroup(group) ? '取消全选' : '全选' }}
                   </el-button>
@@ -351,7 +362,7 @@ if (typeof document !== 'undefined') {
                 <div
                   v-for="rule in group.children"
                   :key="rule.id"
-                  class="rule-item"
+                  class="tree-node rule-node"
                   :class="{ active: currentRuleId === rule.id && !batchMode, 'drop-target': dropTargetId === rule.id, disabled: !rule.active, selected: batchMode && selectedRuleIds.has(rule.id) }"
                   :draggable="!batchMode"
                   @click="batchMode ? toggleRuleSelection(rule.id) : $emit('rule-select', rule)"
@@ -362,14 +373,11 @@ if (typeof document !== 'undefined') {
                   @drop="!batchMode && onDrop($event, group, rule)"
                   @dragend="onDragEnd"
                 >
-                  <el-checkbox v-if="batchMode" :model-value="selectedRuleIds.has(rule.id)" @click.stop @change="toggleRuleSelection(rule.id)" size="small" style="margin-right: 6px" />
-
-                  <div class="rule-left">
-                    <el-tag size="small" :type="methodTagType(rule.method)" effect="dark" class="method-tag">{{ rule.method }}</el-tag>
-                    <div class="rule-info">
-                      <span v-if="rule.name" class="rule-name" :title="rule.name">{{ rule.name }}</span>
-                      <span class="rule-url" :class="{ 'is-sub': !!rule.name }" :title="rule.url">{{ rule.url }}</span>
-                    </div>
+                  <el-checkbox v-if="batchMode" :model-value="selectedRuleIds.has(rule.id)" @click.stop @change="toggleRuleSelection(rule.id)" size="small" style="margin-right: 4px" />
+                  <el-tag size="small" :type="methodTagType(rule.method)" effect="dark" class="method-tag">{{ rule.method }}</el-tag>
+                  <div class="rule-info">
+                    <span v-if="rule.name" class="rule-name" :title="rule.name">{{ rule.name }}</span>
+                    <span class="rule-url" :class="{ 'is-sub': !!rule.name }" :title="rule.url">{{ rule.url }}</span>
                   </div>
                   <div v-if="!batchMode" class="rule-actions">
                     <el-button link type="danger" size="small" class="del-btn" @click.stop="$emit('rule-delete', service, group, rule)" title="删除接口">
@@ -378,11 +386,11 @@ if (typeof document !== 'undefined') {
                     <el-switch v-model="rule.active" size="small" @change="$emit('rule-toggle')" @click.stop />
                   </div>
                 </div>
-                <div v-if="!group.children.length" class="empty-tip">暂无接口，点击 + 新建</div>
-              </el-collapse-item>
-            </el-collapse>
-          </el-collapse-item>
-        </el-collapse>
+                <div v-if="!group.children.length" class="empty-tip" style="padding-left: 36px">暂无接口，点击 + 新建</div>
+              </template>
+            </template>
+          </template>
+        </template>
 
         <!-- 搜索无结果 -->
         <div v-if="searchKeyword && !filteredServices.length" class="empty-tip">未找到匹配的接口，试试调整关键词</div>
@@ -487,19 +495,44 @@ if (typeof document !== 'undefined') {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
 }
-.group-wrapper { padding: 10px; }
 
-/* 服务层标题 */
-.service-title-content {
+/* 树结构容器 */
+.tree-wrapper { padding: 4px 6px; }
+
+/* 通用树节点 */
+.tree-node {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding-right: 10px;
+  height: 28px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+  user-select: none;
+  gap: 4px;
+}
+.tree-node:hover {
+  background: var(--bg-hover);
+}
+
+/* 箭头图标 */
+.tree-arrow {
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.tree-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+/* 服务节点 */
+.service-node {
+  padding-left: 4px;
+  font-weight: 600;
 }
 .service-status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #909399;
   flex-shrink: 0;
@@ -508,7 +541,6 @@ if (typeof document !== 'undefined') {
   background: #67c23a;
 }
 .service-name {
-  font-weight: 600;
   font-size: 13px;
   color: var(--text-primary);
   flex: 1;
@@ -518,50 +550,13 @@ if (typeof document !== 'undefined') {
 }
 .port-tag {
   flex-shrink: 0;
+  margin-right: 4px;
 }
 
-/* 分组层 */
-.group-collapse {
-  border: none;
-}
-:deep(.group-collapse .el-collapse-item__header) {
-  height: 34px;
-  padding-left: 8px;
+/* 分组节点 */
+.group-node {
+  padding-left: 20px;
   font-weight: 500;
-  font-size: 12px;
-  background-color: transparent;
-  color: var(--text-primary);
-  border-bottom-color: var(--border-color);
-}
-:deep(.group-collapse .el-collapse-item__wrap) {
-  background-color: transparent;
-  border-bottom-color: var(--border-color);
-}
-
-:deep(.el-collapse-item__header) {
-  height: 40px;
-  padding-left: 5px;
-  font-weight: 600;
-  background-color: transparent;
-  color: var(--text-primary);
-  border-bottom-color: var(--border-color);
-}
-:deep(.el-collapse-item__wrap) {
-  background-color: transparent;
-  border-bottom-color: var(--border-color);
-}
-.group-title-content {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  padding-right: 10px;
-  align-items: center;
-}
-.group-btns {
-  display: none;
-}
-.group-title-content:hover .group-btns {
-  display: flex;
 }
 .group-name {
   font-size: 12px;
@@ -580,57 +575,57 @@ if (typeof document !== 'undefined') {
   font-size: 11px;
   color: var(--text-secondary);
   font-weight: 400;
-  margin-left: 4px;
+  margin-left: 2px;
   flex-shrink: 0;
 }
-.rule-item {
+.group-btns {
+  display: none;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.group-node:hover .group-btns {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  margin: 4px 0;
-  border-radius: 6px;
-  cursor: pointer;
-  background: transparent;
+}
+
+/* 接口节点 */
+.rule-node {
+  padding-left: 36px;
+  padding-right: 6px;
   border: 1px solid transparent;
-  transition: all 0.2s;
 }
-.rule-item:hover {
-  background: var(--bg-hover);
-}
-.rule-item.active {
+.rule-node.active {
   background: var(--primary-bg);
-  border-color: transparent;
 }
-.rule-item.disabled {
+.rule-node.disabled {
   opacity: 0.5;
 }
-.rule-item.disabled .rule-url {
+.rule-node.disabled .rule-url {
   text-decoration: line-through;
 }
-.rule-item.drop-target {
+.rule-node.drop-target {
   border-color: var(--primary-color);
   border-style: dashed;
 }
-.rule-left {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
+.rule-node.selected {
+  background: var(--primary-bg);
+  border-color: var(--primary-color);
 }
+
 .method-tag {
-  width: 45px;
+  width: 38px;
   justify-content: center;
   font-weight: bold;
   border: none;
+  font-size: 10px;
+  flex-shrink: 0;
 }
 .rule-info {
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
+  min-width: 0;
 }
 .rule-name {
   font-size: 12px;
@@ -639,42 +634,46 @@ if (typeof document !== 'undefined') {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
 }
-.rule-item.active .rule-name {
+.rule-node.active .rule-name {
   color: var(--primary-color);
 }
 .rule-url {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
 }
 .rule-url.is-sub {
   font-size: 10px;
   opacity: 0.7;
 }
-.rule-item.active .rule-url {
+.rule-node.active .rule-url {
   color: var(--primary-color);
 }
 .rule-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 .del-btn {
   opacity: 0;
   transition: opacity 0.2s;
   padding: 0;
 }
-.rule-item:hover .del-btn {
+.rule-node:hover .del-btn {
   opacity: 1;
 }
+
 .empty-tip {
   text-align: center;
   color: var(--text-secondary);
   font-size: 12px;
-  padding: 10px;
+  padding: 8px;
 }
 
 /* 右键菜单 */
@@ -715,12 +714,6 @@ if (typeof document !== 'undefined') {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-/* 批量模式选中 */
-.rule-item.selected {
-  background: var(--primary-bg);
-  border-color: var(--primary-color);
 }
 
 /* 批量操作栏 */

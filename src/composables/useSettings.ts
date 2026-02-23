@@ -5,11 +5,14 @@ import type { HttpMethod } from '@/types/mock';
 /** 所有可配置的侧边栏模块 key */
 export type SidebarModuleKey = 'dashboard' | 'project' | 'service' | 'api' | 'template' | 'scenario' | 'tools' | 'environment' | 'doc' | 'log' | 'websocket' | 'testrunner';
 
+/** 固定在侧边栏顶部的模块（不可排序、不可移除） */
+export const FIXED_PRIMARY: SidebarModuleKey[] = ['project', 'service', 'api'];
+
 /** 默认一级入口 */
-export const DEFAULT_PRIMARY: SidebarModuleKey[] = ['dashboard', 'service', 'api', 'template', 'scenario', 'tools'];
+export const DEFAULT_PRIMARY: SidebarModuleKey[] = ['project', 'service', 'api', 'dashboard', 'template', 'scenario', 'tools'];
 
 /** 默认更多面板 */
-export const DEFAULT_MORE: SidebarModuleKey[] = ['project', 'environment', 'doc', 'log', 'websocket', 'testrunner'];
+export const DEFAULT_MORE: SidebarModuleKey[] = ['environment', 'doc', 'log', 'websocket', 'testrunner'];
 
 export interface AppSettings {
   editorFontSize: number;
@@ -44,7 +47,6 @@ function load(): AppSettings {
       const allKeys = new Set([...saved.sidebarPrimary, ...saved.sidebarMore]);
       for (const key of DEFAULT_PRIMARY) {
         if (!allKeys.has(key)) {
-          // 插入到 primary 中与默认位置一致的地方
           const idx = DEFAULT_PRIMARY.indexOf(key);
           saved.sidebarPrimary.splice(Math.min(idx, saved.sidebarPrimary.length), 0, key);
         }
@@ -54,6 +56,11 @@ function load(): AppSettings {
           saved.sidebarMore.push(key);
         }
       }
+      // 强制固定模块始终在 sidebarPrimary 最前面
+      const fixedSet = new Set(FIXED_PRIMARY);
+      saved.sidebarPrimary = saved.sidebarPrimary.filter((k: SidebarModuleKey) => !fixedSet.has(k));
+      saved.sidebarMore = saved.sidebarMore.filter((k: SidebarModuleKey) => !fixedSet.has(k));
+      saved.sidebarPrimary = [...FIXED_PRIMARY, ...saved.sidebarPrimary];
       return saved;
     }
   } catch {}
