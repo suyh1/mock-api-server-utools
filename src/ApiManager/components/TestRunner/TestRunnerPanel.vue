@@ -12,7 +12,7 @@
 import { ref, computed, onMounted, inject } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Delete, VideoPlay, Check, Close } from '@element-plus/icons-vue';
-import type { TestSuite, TestCase, TestSuiteResult, TestCaseResult, AssertionResult, MockGroup } from '@/types/mock';
+import type { TestSuite, TestCase, TestSuiteResult, TestCaseResult, AssertionResult, MockService, MockServiceGroup } from '@/types/mock';
 
 const API_BASE = ref('http://localhost:3000');
 const localIp = ref('localhost');
@@ -21,8 +21,10 @@ const localIp = ref('localhost');
 const suites = ref<TestSuite[]>([]);
 /** 测试用例列表 */
 const testCases = ref<TestCase[]>([]);
-/** 分组数据（用于获取端口等信息） */
-const groups = ref<MockGroup[]>([]);
+/** 服务数据（用于获取端口等信息） */
+const services = ref<MockService[]>([]);
+/** 服务运行状态 */
+const serviceStatusMap = ref<Record<string, { running: boolean; port: number; prefix: string }>>({});
 /** 当前选中的套件 */
 const currentSuiteId = ref<number | null>(null);
 /** 运行结果 */
@@ -42,14 +44,16 @@ const currentSuiteCases = computed(() => {
 /** 加载数据 */
 const loadData = async () => {
   try {
-    const [suitesRes, casesRes, groupsRes] = await Promise.all([
+    const [suitesRes, casesRes, servicesRes, statusRes] = await Promise.all([
       fetch(`${API_BASE.value}/_admin/testsuites`),
       fetch(`${API_BASE.value}/_admin/testcases`),
-      fetch(`${API_BASE.value}/_admin/rules`),
+      fetch(`${API_BASE.value}/_admin/services`),
+      fetch(`${API_BASE.value}/_admin/service/status`),
     ]);
     suites.value = await suitesRes.json();
     testCases.value = await casesRes.json();
-    groups.value = await groupsRes.json();
+    services.value = await servicesRes.json();
+    serviceStatusMap.value = await statusRes.json();
   } catch {
     console.error('加载测试数据失败');
   }
@@ -171,17 +175,33 @@ const runSuite = async () => {
 
   for (const tc of currentSuiteCases.value) {
     try {
-      // 找到对应的分组以获取端口信息
-      const group = groups.value.find(g => g.id === tc.groupId || g.children.some(r => r.id === tc.ruleId));
-      let targetUrl = '';
+      // 找到对应的服务和分组以获取端口信息
+      let foundService: MockService | undefined;
+      let foundGroup: MockServiceGroup | undefined;
+      for (const s of services.value) {
+        for (const g of s.groups) {
+          if (g.children.some(r => r.id === tc.ruleId)) {
+            foundService = s;
+            foundGroup = g;
+            break;
+          }
+        }
+        if (foundService) break;
+      }
 
-      if (group?.config?.running && group.config.port) {
-        let prefix = group.config.prefix || '';
+      let targetUrl = '';
+      const status = foundService ? serviceStatusMap.value[String(foundService.id)] : undefined;
+
+      if (foundService && status?.running) {
+        let prefix = foundService.prefix || '';
         if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
         if (prefix && prefix.endsWith('/')) prefix = prefix.slice(0, -1);
+        let subPrefix = foundGroup?.subPrefix || '';
+        if (subPrefix && !subPrefix.startsWith('/')) subPrefix = '/' + subPrefix;
+        if (subPrefix && subPrefix.endsWith('/')) subPrefix = subPrefix.slice(0, -1);
         let urlPath = tc.url || '';
         if (urlPath && !urlPath.startsWith('/')) urlPath = '/' + urlPath;
-        targetUrl = `http://${localIp.value}:${group.config.port}${prefix}${urlPath}`;
+        targetUrl = `http://${localIp.value}:${status.port}${prefix}${subPrefix}${urlPath}`;
       } else {
         targetUrl = `${API_BASE.value}${tc.url}`;
       }

@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch, onMounted } from 'vue';
 import { Check, VideoPlay, CopyDocument, Plus, Delete, Document, ArrowDown, ArrowRight, FolderOpened, Close, Download, DocumentCopy, MagicStick, Warning, CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue';
-import type { MockRule, KeyValueItem, MockTemplate, ServiceConfig, TestResultFile, TestResultMeta, MockExpectation, ExpectationCondition, ConditionSource, ConditionOperator, ResponseAssertion, AssertionTarget, AssertionResult } from '@/types/mock';
+import type { MockRule, KeyValueItem, MockTemplate, MockService, MockServiceGroup, TestResultFile, TestResultMeta, MockExpectation, ExpectationCondition, ConditionSource, ConditionOperator, ResponseAssertion, AssertionTarget, AssertionResult } from '@/types/mock';
 import CodeEditor from '@/ApiManager/components/CodeEditor.vue'; // 引入 CodeMirror 封装组件
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { generateDataTemplate, buildAdvancedTemplate, detectInputType, extractTsInterfaceNames } from '@/utils/generateDataTemplate';
@@ -25,7 +25,8 @@ import { generateDataTemplate, buildAdvancedTemplate, detectInputType, extractTs
  * @property {TestResultFile | null} testResultFile - 接口调试的文件响应结果（二进制类型时使用）
  * @property {TestResultMeta | null} testResultMeta - 接口调试的请求元信息（状态码、耗时、响应头等）
  * @property {boolean} hasSelection - 是否已选中某个接口（未选中时显示空状态）
- * @property {ServiceConfig} groupConfig - 所属分组的服务配置（端口、前缀、真实接口地址等）
+ * @property {MockService} service - 所属服务配置（端口、前缀、真实接口地址等）
+ * @property {MockServiceGroup} group - 所属分组（子前缀等）
  * @property {string} localIp - 本机 IP 地址，用于拼接 Mock 地址
  */
 const props = defineProps<{
@@ -34,7 +35,8 @@ const props = defineProps<{
   testResultFile?: TestResultFile | null;
   testResultMeta?: TestResultMeta | null;
   hasSelection: boolean;
-  groupConfig?: ServiceConfig;
+  service?: MockService | null;
+  group?: MockServiceGroup | null;
   localIp?: string;
   groupName?: string;       // 所属分组名称（面包屑用）
   isTesting?: boolean;      // 是否正在请求中
@@ -203,12 +205,16 @@ const removeRow = (list: KeyValueItem[], idx: number) => list.splice(idx, 1);
  */
 // --- Mock 地址计算 ---
 const mockUrlPrefix = computed(() => {
-  const cfg = props.groupConfig;
+  const svc = props.service;
   const ip = props.localIp || 'localhost';
-  const port = cfg?.port || 3888;
-  let prefix = cfg?.prefix || '';
-  if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
-  return `http://${ip}:${port}${prefix}`;
+  const port = svc?.port || 3888;
+  let servicePrefix = svc?.prefix || '';
+  if (servicePrefix && !servicePrefix.startsWith('/')) servicePrefix = '/' + servicePrefix;
+  if (servicePrefix && servicePrefix.endsWith('/')) servicePrefix = servicePrefix.slice(0, -1);
+  let groupPrefix = props.group?.subPrefix || '';
+  if (groupPrefix && !groupPrefix.startsWith('/')) groupPrefix = '/' + groupPrefix;
+  if (groupPrefix && groupPrefix.endsWith('/')) groupPrefix = groupPrefix.slice(0, -1);
+  return `http://${ip}:${port}${servicePrefix}${groupPrefix}`;
 });
 
 /**
@@ -221,29 +227,29 @@ const mockUrlFull = computed(() => {
   return mockUrlPrefix.value + path;
 });
 
-// --- 真实地址计算（接口级别覆盖分组配置）---
+// --- 真实地址计算（接口级别覆盖服务配置）---
 // 以下五个 computed 属性分别对应真实接口地址的各个组成部分。
-// 每个字段优先读取接口级别的 realConfig，若未设置则回退到分组级别的 groupConfig。
-// 写入时只修改接口级别的 realConfig，不影响分组配置。
+// 每个字段优先读取接口级别的 realConfig，若未设置则回退到服务级别的 service 配置。
+// 写入时只修改接口级别的 realConfig，不影响服务配置。
 
-/** 真实接口协议（http / https），接口级覆盖分组配置 */
+/** 真实接口协议（http / https），接口级覆盖服务配置 */
 const realProtocol = computed({
-  get: () => rule.value.realConfig?.protocol || props.groupConfig?.realProtocol || 'http',
+  get: () => rule.value.realConfig?.protocol || props.service?.realProtocol || 'http',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.protocol = v; }
 });
-/** 真实接口主机地址，接口级覆盖分组配置 */
+/** 真实接口主机地址，接口级覆盖服务配置 */
 const realHost = computed({
-  get: () => rule.value.realConfig?.host || props.groupConfig?.realHost || '',
+  get: () => rule.value.realConfig?.host || props.service?.realHost || '',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.host = v; }
 });
-/** 真实接口端口号，接口级覆盖分组配置 */
+/** 真实接口端口号，接口级覆盖服务配置 */
 const realPort = computed({
-  get: () => rule.value.realConfig?.port || props.groupConfig?.realPort || '',
+  get: () => rule.value.realConfig?.port || props.service?.realPort || '',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.port = v; }
 });
-/** 真实接口路径前缀，接口级覆盖分组配置 */
+/** 真实接口路径前缀，接口级覆盖服务配置 */
 const realPrefix = computed({
-  get: () => rule.value.realConfig?.prefix ?? props.groupConfig?.realPrefix ?? '',
+  get: () => rule.value.realConfig?.prefix ?? props.service?.realPrefix ?? '',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.prefix = v; }
 });
 /** 真实接口路径，默认回退到 Mock 的 URL 路径 */
@@ -263,6 +269,7 @@ const realUrlFull = computed(() => {
   if (realPort.value) url += `:${realPort.value}`;
   let prefix = realPrefix.value;
   if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
+  if (prefix && prefix.endsWith('/')) prefix = prefix.slice(0, -1);
   url += prefix;
   let path = realPath.value;
   if (path && !path.startsWith('/')) path = '/' + path;
@@ -743,6 +750,59 @@ const saveAsTestCase = () => {
 /** 监听测试结果变化，自动执行断言 */
 watch(() => props.testResultMeta, () => {
   if (props.testResultMeta) evaluateAssertions();
+});
+
+// --- URL Query 参数双向同步 ---
+const urlInitialized = ref(false);
+let urlSyncTimer: ReturnType<typeof setTimeout> | null = null;
+// 记录从 URL 中同步过来的 key，手动添加的参数不受影响
+const urlSyncedKeys = ref<Set<string>>(new Set());
+
+watch(() => props.modelValue.id, () => {
+  urlInitialized.value = false;
+  urlSyncedKeys.value = new Set();
+  if (urlSyncTimer) { clearTimeout(urlSyncTimer); urlSyncTimer = null; }
+  setTimeout(() => { urlInitialized.value = true; }, 100);
+}, { immediate: true });
+
+watch(() => rule.value.url, () => {
+  if (!urlInitialized.value) return;
+
+  if (urlSyncTimer) clearTimeout(urlSyncTimer);
+  urlSyncTimer = setTimeout(() => {
+    const currentUrl = rule.value.url;
+    if (!rule.value.params) rule.value.params = [];
+
+    // 解析当前 URL 中的 query 参数
+    const urlParams = new Map<string, string>();
+    if (currentUrl && currentUrl.includes('?')) {
+      const queryStr = currentUrl.slice(currentUrl.indexOf('?') + 1);
+      for (const pair of queryStr.split('&').filter(Boolean)) {
+        if (!pair.includes('=')) continue;
+        const [key, ...rest] = pair.split('=');
+        if (key) urlParams.set(decodeURIComponent(key), decodeURIComponent(rest.join('=')));
+      }
+    }
+
+    // 删除：之前从 URL 同步的 key 但现在 URL 里已经没有了
+    const prevSynced = urlSyncedKeys.value;
+    rule.value.params = rule.value.params.filter(p =>
+      !prevSynced.has(p.key) || urlParams.has(p.key)
+    );
+
+    // 新增或更新
+    for (const [key, value] of urlParams) {
+      const existing = rule.value.params.find(p => p.key === key);
+      if (existing) {
+        existing.value = value;
+      } else {
+        rule.value.params.push({ key, value, required: false });
+      }
+    }
+
+    // 更新同步记录
+    urlSyncedKeys.value = new Set(urlParams.keys());
+  }, 600);
 });
 
 onMounted(() => {

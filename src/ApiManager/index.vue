@@ -16,6 +16,7 @@ import { ref, computed, provide, markRaw, type Ref, type Component } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ProjectPanel from './components/Project/ProjectPanel.vue';
+import ServicePanel from './components/Service/ServicePanel.vue';
 import ApiPanel from './components/Api/ApiPanel.vue';
 import TemplateManager from './components/Template/TemplateManager.vue';
 import ToolsPanel from './components/Tools/ToolsPanel.vue';
@@ -32,7 +33,7 @@ import { useSettings, settingsKey } from '@/composables/useSettings';
 import { useEnvironments, environmentsKey } from '@/composables/useEnvironments';
 
 /** 需要显示使用指南的 tab */
-const guideTabs = new Set(['dashboard', 'project', 'api', 'template', 'scenario', 'environment', 'doc', 'log', 'websocket', 'tools', 'testrunner']);
+const guideTabs = new Set(['dashboard', 'project', 'service', 'api', 'template', 'scenario', 'environment', 'doc', 'log', 'websocket', 'tools', 'testrunner']);
 
 /** 全局设置（持久化到 localStorage） */
 const settings = useSettings();
@@ -96,13 +97,14 @@ const currentTitle = computed(() => {
   const map: Record<string, string> = {
     dashboard: '数据看板',
     project: '项目管理',
+    service: '服务管理',
     api: '接口管理',
     template: '数据模板',
     tools: '开发工具',
     log: '请求日志',
     scenario: '场景管理',
     websocket: 'WebSocket 管理',
-    environment: '环境变量',
+    environment: '环境配置',
     doc: '接口文档',
     testrunner: '测试运行器',
     settings: '全局设置',
@@ -134,7 +136,7 @@ const currentTitle = computed(() => {
               <h4>🚀 快速开始</h4>
               <ol>
                 <li>在「接口」模块中创建分组，添加 Mock 接口规则</li>
-                <li>点击分组的 ⚙ 按钮，配置端口并启动 Mock 服务</li>
+                <li>在「环境配置」模块中配置端口并启动 Mock 服务</li>
                 <li>在接口编辑器中点击「测试」发送请求，验证 Mock 响应</li>
                 <li>前端项目中将请求地址指向 Mock 服务即可使用</li>
               </ol>
@@ -149,10 +151,10 @@ const currentTitle = computed(() => {
               <table>
                 <thead><tr><th>模块</th><th>功能</th></tr></thead>
                 <tbody>
-                  <tr><td>接口管理</td><td>创建分组和接口规则，配置请求/响应，启动 Mock 服务，支持 Mock 和真实接口两种测试模式</td></tr>
+                  <tr><td>接口管理</td><td>创建分组和接口规则，配置请求/响应，支持 Mock 和真实接口两种测试模式</td></tr>
                   <tr><td>数据模板</td><td>创建可复用的响应模板，支持 Mock.js 语法生成随机数据</td></tr>
                   <tr><td>场景管理</td><td>为接口配置多个响应预设（成功/失败/超时等），一键切换测试场景</td></tr>
-                  <tr><td>环境变量</td><td>管理多环境变量，在接口中使用变量引用，顶部下拉框快速切换</td></tr>
+                  <tr><td>环境配置</td><td>管理多环境配置（服务端口、变量、覆盖），统一的环境配置中心，顶部下拉框快速切换</td></tr>
                   <tr><td>接口文档</td><td>从 Mock 规则自动生成可视化 API 文档，支持导出 Markdown / HTML</td></tr>
                   <tr><td>开发工具</td><td>30+ 内置工具：JSON 格式化、编解码、正则测试、代码生成、cURL 解析等</td></tr>
                   <tr><td>请求日志</td><td>记录所有测试请求，支持筛选、搜索、展开详情、一键重放对比</td></tr>
@@ -183,6 +185,23 @@ const currentTitle = computed(() => {
               </table>
               <p class="guide-tip">💡 删除项目后，关联的接口分组将变为"未分类"，接口数据不会丢失。</p>
             </template>
+            <!-- 服务 -->
+            <template v-if="activeTab === 'service'">
+              <h4>📖 服务管理说明</h4>
+              <p>服务是 Mock API 的核心运行单元。一个项目下可以有多个后端服务（如用户服务、订单服务），每个服务有独立的端口和前缀，服务内部通过分组组织接口。</p>
+              <h4>🚀 使用步骤</h4>
+              <ol>
+                <li>先在「项目」模块中创建项目</li>
+                <li>点击右上角「新建服务」按钮，选择归属项目</li>
+                <li>在「基础配置」Tab 中设置服务名称、端口和前缀</li>
+                <li>在「分组管理」Tab 中创建接口分组，设置子前缀</li>
+                <li>点击「启动服务」按钮启动 Mock 服务</li>
+                <li>在「接口」模块中为分组添加具体的接口规则</li>
+              </ol>
+              <h4>🔗 层级关系</h4>
+              <p>项目 → 服务 → 分组 → 接口。服务是启动的最小单位，一个服务下所有分组共享端口和服务前缀。</p>
+              <p class="guide-tip">💡 URL 匹配规则：http://ip:端口/服务前缀/分组子前缀/接口路径</p>
+            </template>
             <!-- 接口 -->
             <template v-if="activeTab === 'api'">
               <h4>📖 接口管理说明</h4>
@@ -192,7 +211,7 @@ const currentTitle = computed(() => {
                 <li>点击左侧 <b>+</b> 按钮创建分组，分组是接口的容器</li>
                 <li>在分组下点击 <b>+</b> 添加接口规则，填写 URL、请求方法</li>
                 <li>在右侧编辑器中配置请求头、参数、请求体和响应内容</li>
-                <li>点击分组的 <b>⚙</b> 按钮，配置端口并启动 Mock 服务</li>
+                <li>在「环境配置」模块中配置端口，选择目标分组并启动 Mock 服务</li>
                 <li>点击「Mock 测试」或「真实请求」按钮进行调试</li>
               </ol>
               <h4>📝 响应模式</h4>
@@ -287,19 +306,22 @@ const currentTitle = computed(() => {
             </template>
             <!-- 环境 -->
             <template v-if="activeTab === 'environment'">
-              <h4>📖 什么是环境变量</h4>
-              <p>环境变量用于管理不同部署环境（开发、测试、生产）下的配置差异。通过 <code v-pre>{{变量名}}</code> 语法在接口中引用变量，切换环境时所有引用自动替换为对应值，无需逐个修改接口配置。</p>
+              <h4>📖 什么是环境配置</h4>
+              <p>环境配置是统一的配置中心，整合了服务配置（端口、前缀、真实接口地址、代理录制）和环境变量管理。通过三层继承机制（全局 → 项目覆盖 → 分组覆盖），灵活管理不同部署环境下的差异。</p>
 
               <h4>🚀 完整使用步骤</h4>
               <ol>
-                <li><b>创建环境：</b>点击右上角「新建环境」按钮，输入环境名称（如"开发环境"、"测试环境"）。系统会自动分配颜色标识</li>
-                <li><b>添加变量：</b>在左侧列表中点击刚创建的环境，右侧会出现变量编辑表格。点击「添加变量」填写变量名（如 <code>baseUrl</code>）和对应的值</li>
-                <li><b>启用/禁用单个变量：</b>每个变量左侧有开关，关闭后该变量不参与替换（方便临时调试）</li>
-                <li><b>激活环境：</b>在左侧环境卡片上点击「激活」按钮，该环境变为当前生效环境（同一时间只能有一个激活环境）</li>
-                <li><b>在接口中使用：</b>切换到「接口」模块，在 URL、请求头、请求体中使用 <code v-pre>{{变量名}}</code> 引用变量</li>
-                <li><b>执行测试：</b>点击「请求 Mock」或「请求真实接口」时，所有 <code v-pre>{{变量名}}</code> 会被自动替换为当前激活环境中对应的值</li>
-                <li><b>快速切换：</b>页面右上角的下拉框可以快速切换激活环境，无需回到本页面</li>
+                <li><b>创建环境：</b>点击右上角「新建环境」按钮，输入环境名称（如"开发环境"、"测试环境"）</li>
+                <li><b>配置服务：</b>在「服务配置」Tab 中设置端口、前缀、真实接口地址和代理录制</li>
+                <li><b>添加变量：</b>在「环境变量」Tab 中添加键值对变量，通过 <code v-pre>{{变量名}}</code> 在接口中引用</li>
+                <li><b>覆盖配置：</b>在「覆盖配置」Tab 中为特定项目或分组设置覆盖值（只填写需要覆盖的字段）</li>
+                <li><b>激活环境：</b>在左侧环境卡片上点击「激活」按钮，该环境变为当前生效环境</li>
+                <li><b>启动服务：</b>在「服务配置」Tab 中选择目标分组，点击「启动服务」即可</li>
+                <li><b>快速切换：</b>页面右上角的下拉框可以快速切换激活环境</li>
               </ol>
+
+              <h4>🔗 三层继承机制</h4>
+              <p>配置解析优先级：<b>分组覆盖 > 项目覆盖 > 全局配置</b>。只有填写了值的字段才会覆盖上层，留空则自动继承。</p>
 
               <h4>📝 变量语法规则</h4>
               <ul>
@@ -309,31 +331,9 @@ const currentTitle = computed(() => {
                 <li>未激活任何环境时，所有变量引用保持原样不替换</li>
               </ul>
 
-              <h4>💡 典型使用场景</h4>
-              <table>
-                <thead><tr><th>变量名</th><th>开发环境</th><th>生产环境</th><th>用途</th></tr></thead>
-                <tbody>
-                  <tr><td><code>baseUrl</code></td><td>http://localhost:3000</td><td>https://api.example.com</td><td>接口基础地址</td></tr>
-                  <tr><td><code>token</code></td><td>dev-token-123</td><td>prod-token-456</td><td>认证令牌</td></tr>
-                  <tr><td><code>userId</code></td><td>1</td><td>10086</td><td>测试用户 ID</td></tr>
-                  <tr><td><code>apiVersion</code></td><td>v1</td><td>v2</td><td>API 版本号</td></tr>
-                </tbody>
-              </table>
-
-              <h4>🔧 实际操作示例</h4>
-              <p><b>场景：</b>同一个接口需要在开发和生产两个环境间切换。</p>
-              <ol>
-                <li>创建「开发环境」，添加变量 <code>baseUrl</code> = <code>http://localhost:3000</code>，<code>token</code> = <code>dev-123</code></li>
-                <li>创建「生产环境」，添加变量 <code>baseUrl</code> = <code>https://api.prod.com</code>，<code>token</code> = <code>prod-456</code></li>
-                <li>在接口管理中，将真实接口地址的主机配置为 <code v-pre>{{baseUrl}}</code></li>
-                <li>在请求头中添加 <code>Authorization</code> = <code v-pre>Bearer {{token}}</code></li>
-                <li>激活「开发环境」后点击测试，请求发送到 <code>http://localhost:3000</code>，携带 <code>Bearer dev-123</code></li>
-                <li>切换激活到「生产环境」再次测试，请求自动变为 <code>https://api.prod.com</code>，携带 <code>Bearer prod-456</code></li>
-              </ol>
-
               <h4>📦 导入/导出</h4>
               <p>点击「导出」可将所有环境配置保存为 JSON 文件，方便备份或分享给同事。点击「导入」加载 JSON 文件，导入时会自动生成新 ID 避免冲突。</p>
-              <p class="guide-tip">💡 右上角的环境下拉框只在创建了至少一个环境后才会出现。选择「清除」可取消激活所有环境。</p>
+              <p class="guide-tip">💡 未激活任何环境时，分组原有的 config 配置仍然生效，保持向后兼容。</p>
             </template>
             <!-- 文档 -->
             <template v-if="activeTab === 'doc'">
@@ -448,6 +448,9 @@ ws.send('ping');  // → 收到: pong</pre>
 
           <!-- 项目管理面板 -->
           <ProjectPanel v-if="activeTab === 'project'" />
+
+          <!-- 服务管理面板 -->
+          <ServicePanel v-if="activeTab === 'service'" />
 
           <!-- 接口管理面板 -->
           <ApiPanel v-if="activeTab === 'api'" />

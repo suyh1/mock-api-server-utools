@@ -195,6 +195,9 @@ async function replayRequest(log: RequestLog) {
         <el-table-column label="耗时" width="80">
           <template #default="{ row }">{{ row.duration }}ms</template>
         </el-table-column>
+        <el-table-column label="服务" width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.serviceName || '-' }}</template>
+        </el-table-column>
         <el-table-column label="模式" width="70">
           <template #default="{ row }">
             <el-tag size="small" :type="row.mode === 'mock' ? 'primary' : 'info'" effect="plain">{{ row.mode === 'mock' ? 'Mock' : 'Real' }}</el-tag>

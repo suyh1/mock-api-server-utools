@@ -3,10 +3,10 @@ import type { InjectionKey } from 'vue';
 import type { HttpMethod } from '@/types/mock';
 
 /** 所有可配置的侧边栏模块 key */
-export type SidebarModuleKey = 'dashboard' | 'project' | 'api' | 'template' | 'scenario' | 'tools' | 'environment' | 'doc' | 'log' | 'websocket' | 'testrunner';
+export type SidebarModuleKey = 'dashboard' | 'project' | 'service' | 'api' | 'template' | 'scenario' | 'tools' | 'environment' | 'doc' | 'log' | 'websocket' | 'testrunner';
 
 /** 默认一级入口 */
-export const DEFAULT_PRIMARY: SidebarModuleKey[] = ['dashboard', 'api', 'template', 'scenario', 'tools'];
+export const DEFAULT_PRIMARY: SidebarModuleKey[] = ['dashboard', 'service', 'api', 'template', 'scenario', 'tools'];
 
 /** 默认更多面板 */
 export const DEFAULT_MORE: SidebarModuleKey[] = ['project', 'environment', 'doc', 'log', 'websocket', 'testrunner'];
@@ -38,7 +38,24 @@ const defaults: AppSettings = {
 function load(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = { ...defaults, ...JSON.parse(raw) };
+      // 迁移：确保新增的模块出现在侧边栏中
+      const allKeys = new Set([...saved.sidebarPrimary, ...saved.sidebarMore]);
+      for (const key of DEFAULT_PRIMARY) {
+        if (!allKeys.has(key)) {
+          // 插入到 primary 中与默认位置一致的地方
+          const idx = DEFAULT_PRIMARY.indexOf(key);
+          saved.sidebarPrimary.splice(Math.min(idx, saved.sidebarPrimary.length), 0, key);
+        }
+      }
+      for (const key of DEFAULT_MORE) {
+        if (!allKeys.has(key)) {
+          saved.sidebarMore.push(key);
+        }
+      }
+      return saved;
+    }
   } catch {}
   return { ...defaults };
 }

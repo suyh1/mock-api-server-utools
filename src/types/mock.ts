@@ -56,6 +56,40 @@ export interface MockRule {
     assertions?: ResponseAssertion[]; // 响应断言列表
 }
 
+// ==================== 新架构：MockService + MockServiceGroup ====================
+
+/** 服务内的轻量级分组（controller 级别） */
+export interface MockServiceGroup {
+    id: number;
+    name: string;
+    description?: string;
+    subPrefix?: string;              // 分组子前缀，如 /users
+    children: MockRule[];
+}
+
+/** Mock 服务（一个独立的 Express 实例） */
+export interface MockService {
+    id: number;
+    name: string;
+    description?: string;
+    projectId: number;               // 必填，必须先建项目
+    port: number;
+    prefix: string;                  // 服务级前缀，如 /api
+    running: boolean;
+    realProtocol?: string;
+    realHost?: string;
+    realPort?: string;
+    realPrefix?: string;
+    proxyEnabled?: boolean;
+    proxyTarget?: string;
+    groups: MockServiceGroup[];      // 内联分组
+    createdAt: number;
+    updatedAt: number;
+}
+
+// ==================== 旧类型（保留用于数据迁移） ====================
+
+/** @deprecated 使用 MockService 替代，仅用于数据迁移兼容 */
 export interface ServiceConfig {
     port: number;
     prefix: string;
@@ -70,6 +104,7 @@ export interface ServiceConfig {
     proxyTarget?: string;    // 代理目标地址
 }
 
+/** @deprecated 使用 MockService + MockServiceGroup 替代，仅用于数据迁移兼容 */
 export interface MockGroup {
     id: number;
     name: string;
@@ -117,11 +152,42 @@ export interface EnvVariable {
   enabled: boolean;
 }
 
+/** 环境中的服务配置（所有字段可选，用于继承覆盖） */
+export interface EnvServiceConfig {
+  port?: number;
+  prefix?: string;
+  realProtocol?: string;
+  realHost?: string;
+  realPort?: string;
+  realPrefix?: string;
+  proxyEnabled?: boolean;
+  proxyTarget?: string;
+}
+
+/** 项目/服务级别的覆盖配置 */
+export interface EnvOverride {
+  /** 覆盖层级：project 或 service（兼容旧数据中的 group） */
+  scope: 'project' | 'service' | 'group';
+  /** 关联的项目 ID 或服务 ID */
+  targetId: number;
+  /** 可选展示名称（便于 UI 辨别） */
+  targetName?: string;
+  /** 覆盖的服务配置（只覆盖有值的字段） */
+  serviceConfig?: EnvServiceConfig;
+  /** 覆盖的变量（同名覆盖，新名新增） */
+  variables?: EnvVariable[];
+}
+
 export interface Environment {
   id: number;
   name: string;
   color?: string;
+  /** 全局服务配置（基础层） */
+  serviceConfig?: EnvServiceConfig;
+  /** 全局变量 */
   variables: EnvVariable[];
+  /** 项目/分组级别的覆盖 */
+  overrides?: EnvOverride[];
   createdAt: number;
   updatedAt: number;
 }
@@ -139,6 +205,7 @@ export interface RequestLog {
   ruleId?: number;
   ruleName?: string;
   groupName?: string;
+  serviceName?: string;
   requestHeaders?: Record<string, string>;
   requestBody?: string;
   responseHeaders?: Record<string, string>;

@@ -2,28 +2,30 @@
 import { ref, onMounted, computed } from 'vue';
 import { Refresh } from '@element-plus/icons-vue';
 import { useRequestLogs } from '@/composables/useRequestLogs';
-import type { MockGroup } from '@/types/mock';
+import type { MockService } from '@/types/mock';
 
 const emit = defineEmits<{
   (e: 'navigate', tab: string): void;
 }>();
 
 const API_BASE = ref('http://localhost:3000');
-const groups = ref<MockGroup[]>([]);
+const services = ref<MockService[]>([]);
 const templateCount = ref(0);
 const runningCount = ref(0);
 const loading = ref(false);
 const { logs } = useRequestLogs();
 
-const totalRules = computed(() => groups.value.reduce((sum, g) => sum + g.children.length, 0));
-const groupCount = computed(() => groups.value.length);
+const totalRules = computed(() => services.value.reduce((sum, s) => s.groups.reduce((gs, g) => gs + g.children.length, gs), 0));
+const serviceCount = computed(() => services.value.length);
 const recentLogs = computed(() => logs.value.slice(0, 10));
 
 const methodStats = computed(() => {
   const counts: Record<string, number> = { GET: 0, POST: 0, PUT: 0, DELETE: 0 };
-  for (const g of groups.value) {
-    for (const r of g.children) {
-      if (counts[r.method] !== undefined) counts[r.method]++;
+  for (const s of services.value) {
+    for (const g of s.groups) {
+      for (const r of g.children) {
+        if (counts[r.method] !== undefined) counts[r.method]++;
+      }
     }
   }
   const total = Object.values(counts).reduce((s, v) => s + v, 0) || 1;
@@ -41,34 +43,32 @@ const methodColors: Record<string, string> = {
   DELETE: '#f56c6c',
 };
 
-const serviceList = ref<{ groupId: string; port: number; prefix: string }[]>([]);
+const serviceList = ref<{ serviceId: string; name: string; port: number; prefix: string }[]>([]);
 
 async function loadData() {
   loading.value = true;
   try {
-    const [rulesRes, templatesRes, statusRes] = await Promise.all([
-      fetch(`${API_BASE.value}/_admin/rules`),
+    const [servicesRes, templatesRes, statusRes] = await Promise.all([
+      fetch(`${API_BASE.value}/_admin/services`),
       fetch(`${API_BASE.value}/_admin/templates`),
       fetch(`${API_BASE.value}/_admin/service/status`),
     ]);
-    groups.value = await rulesRes.json();
+    services.value = await servicesRes.json();
     const templates = await templatesRes.json();
     templateCount.value = Array.isArray(templates) ? templates.length : 0;
     const status = await statusRes.json();
-    const services: { groupId: string; port: number; prefix: string }[] = [];
-    for (const [gid, info] of Object.entries(status)) {
+    const list: { serviceId: string; name: string; port: number; prefix: string }[] = [];
+    for (const [sid, info] of Object.entries(status)) {
       const s = info as any;
-      if (s.running) services.push({ groupId: gid, port: s.port, prefix: s.prefix || '' });
+      if (s.running) {
+        const svc = services.value.find(sv => String(sv.id) === sid);
+        list.push({ serviceId: sid, name: svc?.name || `服务 ${sid}`, port: s.port, prefix: s.prefix || '' });
+      }
     }
-    serviceList.value = services;
-    runningCount.value = services.length;
+    serviceList.value = list;
+    runningCount.value = list.length;
   } catch {}
   loading.value = false;
-}
-
-function getGroupName(groupId: string): string {
-  const g = groups.value.find(g => String(g.id) === groupId);
-  return g?.name || `分组 ${groupId}`;
 }
 
 function formatTime(ts: number) {
@@ -109,9 +109,9 @@ onMounted(() => {
           <div class="stat-value">{{ totalRules }}</div>
           <div class="stat-label">接口总数</div>
         </div>
-        <div class="stat-card" @click="emit('navigate', 'api')">
-          <div class="stat-value">{{ groupCount }}</div>
-          <div class="stat-label">分组数量</div>
+        <div class="stat-card" @click="emit('navigate', 'service')">
+          <div class="stat-value">{{ serviceCount }}</div>
+          <div class="stat-label">服务数量</div>
         </div>
         <div class="stat-card" @click="emit('navigate', 'template')">
           <div class="stat-value">{{ templateCount }}</div>
@@ -141,9 +141,9 @@ onMounted(() => {
           <div class="section-title">服务状态</div>
           <div v-if="serviceList.length === 0" class="empty-hint">暂无运行中的服务</div>
           <div v-else class="service-list">
-            <div v-for="s in serviceList" :key="s.groupId" class="service-item">
+            <div v-for="s in serviceList" :key="s.serviceId" class="service-item">
               <span class="service-dot"></span>
-              <span class="service-name">{{ getGroupName(s.groupId) }}</span>
+              <span class="service-name">{{ s.name }}</span>
               <span class="service-port">:{{ s.port }}</span>
             </div>
           </div>

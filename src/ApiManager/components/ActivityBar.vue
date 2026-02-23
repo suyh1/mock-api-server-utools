@@ -4,7 +4,7 @@
  */
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue';
-import { Connection, DocumentCopy, Setting, Briefcase, FolderOpened, Tickets, Operation, Promotion, DataLine, Collection, Document, MoreFilled, List } from '@element-plus/icons-vue';
+import { Connection, DocumentCopy, Setting, Briefcase, FolderOpened, Tickets, Operation, Promotion, DataLine, Collection, Document, MoreFilled, List, Monitor } from '@element-plus/icons-vue';
 import type { Component } from 'vue';
 import { settingsKey, type SidebarModuleKey } from '@/composables/useSettings';
 
@@ -19,6 +19,7 @@ interface NavItem { key: SidebarModuleKey; label: string; icon: Component; }
 const allModules: Record<SidebarModuleKey, NavItem> = {
   dashboard: { key: 'dashboard', label: '看板', icon: DataLine },
   project: { key: 'project', label: '项目', icon: FolderOpened },
+  service: { key: 'service', label: '服务', icon: Monitor },
   api: { key: 'api', label: '接口', icon: Connection },
   template: { key: 'template', label: '模板', icon: DocumentCopy },
   scenario: { key: 'scenario', label: '场景', icon: Operation },

@@ -1,36 +1,39 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
-import type { MockGroup, MockRule, Project } from '@/types/mock';
+import type { MockService, MockRule, Project } from '@/types/mock';
 import { generateMarkdownDoc, generateHtmlDoc } from '@/utils/generateApiDoc';
 
 const API_BASE = ref('http://localhost:3000');
-const groups = ref<MockGroup[]>([]);
+const services = ref<MockService[]>([]);
 const projects = ref<Project[]>([]);
 const loading = ref(false);
 const filterProjectId = ref<number | null>(null);
-const filterGroupId = ref<number | null>(null);
+const filterServiceId = ref<number | null>(null);
 const showDisabled = ref(false);
 
-const filteredGroups = computed(() => {
-  let result = groups.value;
+const filteredServices = computed(() => {
+  let result = services.value;
   if (filterProjectId.value) {
-    result = result.filter(g => g.projectId === filterProjectId.value);
+    result = result.filter(s => s.projectId === filterProjectId.value);
   }
-  if (filterGroupId.value) {
-    result = result.filter(g => g.id === filterGroupId.value);
+  if (filterServiceId.value) {
+    result = result.filter(s => s.id === filterServiceId.value);
   }
   return result;
 });
 
-const displayGroups = computed(() => {
-  return filteredGroups.value.map(g => ({
-    ...g,
-    children: showDisabled.value ? g.children : g.children.filter(r => r.active),
-  })).filter(g => g.children.length > 0);
+const displayServices = computed(() => {
+  return filteredServices.value.map(s => ({
+    ...s,
+    groups: s.groups.map(g => ({
+      ...g,
+      children: showDisabled.value ? g.children : g.children.filter(r => r.active),
+    })).filter(g => g.children.length > 0),
+  })).filter(s => s.groups.length > 0);
 });
 
-const totalApis = computed(() => displayGroups.value.reduce((s, g) => s + g.children.length, 0));
+const totalApis = computed(() => displayServices.value.reduce((sum, s) => s.groups.reduce((gs, g) => gs + g.children.length, gs), 0));
 
 type TagType = 'success' | 'warning' | 'info' | 'danger';
 function methodColor(method: string): TagType {
@@ -53,21 +56,21 @@ function formatJson(str: string): string {
 async function loadData() {
   loading.value = true;
   try {
-    const [pRes, gRes] = await Promise.all([
+    const [pRes, sRes] = await Promise.all([
       fetch(`${API_BASE.value}/_admin/projects`),
-      fetch(`${API_BASE.value}/_admin/rules`),
+      fetch(`${API_BASE.value}/_admin/services`),
     ]);
     projects.value = await pRes.json();
-    groups.value = await gRes.json();
+    services.value = await sRes.json();
   } catch {}
   loading.value = false;
 }
 
 function exportMarkdown() {
-  const md = generateMarkdownDoc(groups.value, {
-    scope: filterProjectId.value ? 'project' : filterGroupId.value ? 'group' : 'all',
+  const md = generateMarkdownDoc(services.value, {
+    scope: filterProjectId.value ? 'project' : filterServiceId.value ? 'service' : 'all',
     projectId: filterProjectId.value,
-    groupId: filterGroupId.value,
+    serviceId: filterServiceId.value,
     projects: projects.value,
     showDisabled: showDisabled.value,
   });
@@ -82,10 +85,10 @@ function exportMarkdown() {
 }
 
 function exportHtml() {
-  const md = generateMarkdownDoc(groups.value, {
-    scope: filterProjectId.value ? 'project' : filterGroupId.value ? 'group' : 'all',
+  const md = generateMarkdownDoc(services.value, {
+    scope: filterProjectId.value ? 'project' : filterServiceId.value ? 'service' : 'all',
     projectId: filterProjectId.value,
-    groupId: filterGroupId.value,
+    serviceId: filterServiceId.value,
     projects: projects.value,
     showDisabled: showDisabled.value,
   });
@@ -116,11 +119,11 @@ onMounted(() => {
         <el-tag size="small" type="info">{{ totalApis }} 个接口</el-tag>
       </div>
       <div class="header-right">
-        <el-select v-model="filterProjectId" size="small" clearable placeholder="筛选项目" style="width: 120px" @change="filterGroupId = null">
+        <el-select v-model="filterProjectId" size="small" clearable placeholder="筛选项目" style="width: 120px" @change="filterServiceId = null">
           <el-option v-for="p in projects" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
-        <el-select v-model="filterGroupId" size="small" clearable placeholder="筛选分组" style="width: 120px">
-          <el-option v-for="g in (filterProjectId ? groups.filter(g => g.projectId === filterProjectId) : groups)" :key="g.id" :label="g.name" :value="g.id" />
+        <el-select v-model="filterServiceId" size="small" clearable placeholder="筛选服务" style="width: 120px">
+          <el-option v-for="s in (filterProjectId ? services.filter(s => s.projectId === filterProjectId) : services)" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
         <el-checkbox v-model="showDisabled" size="small">显示禁用</el-checkbox>
         <el-button size="small" @click="exportMarkdown">导出 MD</el-button>
@@ -131,95 +134,103 @@ onMounted(() => {
     <div class="doc-body">
       <!-- 左侧目录 -->
       <aside class="doc-toc">
-        <div v-for="group in displayGroups" :key="group.id" class="toc-group">
-          <div class="toc-group-title">{{ group.name }}</div>
-          <div
-            v-for="rule in group.children" :key="rule.id"
-            class="toc-item"
-            @click="scrollTo(rule.id)"
-          >
-            <el-tag size="small" :type="methodColor(rule.method)" effect="plain" class="toc-method">{{ rule.method }}</el-tag>
-            <span class="toc-name">{{ rule.name || rule.url }}</span>
+        <div v-for="service in displayServices" :key="service.id" class="toc-service">
+          <div class="toc-service-title">{{ service.name }}</div>
+          <div v-for="group in service.groups" :key="group.id" class="toc-group">
+            <div class="toc-group-title">{{ group.name }}</div>
+            <div
+              v-for="rule in group.children" :key="rule.id"
+              class="toc-item"
+              @click="scrollTo(rule.id)"
+            >
+              <el-tag size="small" :type="methodColor(rule.method)" effect="plain" class="toc-method">{{ rule.method }}</el-tag>
+              <span class="toc-name">{{ rule.name || rule.url }}</span>
+            </div>
           </div>
         </div>
-        <div v-if="displayGroups.length === 0" class="toc-empty">暂无接口数据</div>
+        <div v-if="displayServices.length === 0" class="toc-empty">暂无接口数据</div>
       </aside>
 
       <!-- 右侧文档内容 -->
       <div class="doc-content">
-        <div v-for="group in displayGroups" :key="group.id" class="doc-group">
-          <h2 class="doc-group-title">{{ group.name }}</h2>
-          <p v-if="group.description" class="doc-group-desc">{{ group.description }}</p>
+        <div v-for="service in displayServices" :key="service.id" class="doc-service">
+          <h2 class="doc-service-title">{{ service.name }}</h2>
+          <p v-if="service.description" class="doc-service-desc">{{ service.description }}</p>
 
-          <div v-for="rule in group.children" :key="rule.id" :id="`doc-rule-${rule.id}`" class="doc-rule-card">
-            <div class="rule-header">
-              <el-tag :type="methodColor(rule.method)" effect="dark" size="small">{{ rule.method }}</el-tag>
-              <code class="rule-url">{{ rule.url }}</code>
-              <span v-if="rule.name" class="rule-name">{{ rule.name }}</span>
-              <el-tag v-if="!rule.active" size="small" type="info" effect="plain">禁用</el-tag>
-            </div>
+          <div v-for="group in service.groups" :key="group.id" class="doc-group">
+            <h3 class="doc-group-title">{{ group.name }}</h3>
+            <p v-if="group.description" class="doc-group-desc">{{ group.description }}</p>
 
-            <!-- 请求头 -->
-            <div v-if="rule.headers?.filter(h => h.key).length" class="rule-section">
-              <h4>请求头</h4>
-              <table class="doc-table">
-                <thead><tr><th>Key</th><th>Value</th><th>必填</th><th>说明</th></tr></thead>
-                <tbody>
-                  <tr v-for="h in rule.headers.filter(h => h.key)" :key="h.key">
-                    <td><code>{{ h.key }}</code></td>
-                    <td>{{ h.value || '-' }}</td>
-                    <td>{{ h.required ? '是' : '否' }}</td>
-                    <td>{{ h.description || '-' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <div v-for="rule in group.children" :key="rule.id" :id="`doc-rule-${rule.id}`" class="doc-rule-card">
+              <div class="rule-header">
+                <el-tag :type="methodColor(rule.method)" effect="dark" size="small">{{ rule.method }}</el-tag>
+                <code class="rule-url">{{ rule.url }}</code>
+                <span v-if="rule.name" class="rule-name">{{ rule.name }}</span>
+                <el-tag v-if="!rule.active" size="small" type="info" effect="plain">禁用</el-tag>
+              </div>
 
-            <!-- Query 参数 -->
-            <div v-if="rule.params?.filter(p => p.key).length" class="rule-section">
-              <h4>Query 参数</h4>
-              <table class="doc-table">
-                <thead><tr><th>参数名</th><th>示例值</th><th>必填</th><th>说明</th></tr></thead>
-                <tbody>
-                  <tr v-for="p in rule.params.filter(p => p.key)" :key="p.key">
-                    <td><code>{{ p.key }}</code></td>
-                    <td>{{ p.value || '-' }}</td>
-                    <td>{{ p.required ? '是' : '否' }}</td>
-                    <td>{{ p.description || '-' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+              <!-- 请求头 -->
+              <div v-if="rule.headers?.filter(h => h.key).length" class="rule-section">
+                <h4>请求头</h4>
+                <table class="doc-table">
+                  <thead><tr><th>Key</th><th>Value</th><th>必填</th><th>说明</th></tr></thead>
+                  <tbody>
+                    <tr v-for="h in rule.headers.filter(h => h.key)" :key="h.key">
+                      <td><code>{{ h.key }}</code></td>
+                      <td>{{ h.value || '-' }}</td>
+                      <td>{{ h.required ? '是' : '否' }}</td>
+                      <td>{{ h.description || '-' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-            <!-- 请求体 -->
-            <div v-if="rule.body && rule.body.type !== 'none'" class="rule-section">
-              <h4>请求体 <el-tag size="small" effect="plain">{{ rule.body.type }}</el-tag></h4>
-              <pre v-if="rule.body.type === 'json' && rule.body.raw" class="doc-pre">{{ formatJson(rule.body.raw) }}</pre>
-              <table v-else-if="rule.body.formData?.filter(f => f.key).length" class="doc-table">
-                <thead><tr><th>Key</th><th>Value</th><th>说明</th></tr></thead>
-                <tbody>
-                  <tr v-for="f in rule.body.formData.filter(f => f.key)" :key="f.key">
-                    <td><code>{{ f.key }}</code></td>
-                    <td>{{ f.value || '-' }}</td>
-                    <td>{{ f.description || '-' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+              <!-- Query 参数 -->
+              <div v-if="rule.params?.filter(p => p.key).length" class="rule-section">
+                <h4>Query 参数</h4>
+                <table class="doc-table">
+                  <thead><tr><th>参数名</th><th>示例值</th><th>必填</th><th>说明</th></tr></thead>
+                  <tbody>
+                    <tr v-for="p in rule.params.filter(p => p.key)" :key="p.key">
+                      <td><code>{{ p.key }}</code></td>
+                      <td>{{ p.value || '-' }}</td>
+                      <td>{{ p.required ? '是' : '否' }}</td>
+                      <td>{{ p.description || '-' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-            <!-- 响应 -->
-            <div class="rule-section">
-              <h4>响应</h4>
-              <template v-if="rule.responseMode === 'basic'">
-                <div class="response-meta">Content-Type: <code>{{ rule.responseType || 'application/json' }}</code></div>
-                <pre v-if="rule.responseBasic" class="doc-pre">{{ rule.responseType?.includes('json') ? formatJson(rule.responseBasic) : rule.responseBasic }}</pre>
-              </template>
-              <div v-else class="response-meta" style="color: var(--text-secondary);">高级模式（脚本生成响应）</div>
+              <!-- 请求体 -->
+              <div v-if="rule.body && rule.body.type !== 'none'" class="rule-section">
+                <h4>请求体 <el-tag size="small" effect="plain">{{ rule.body.type }}</el-tag></h4>
+                <pre v-if="rule.body.type === 'json' && rule.body.raw" class="doc-pre">{{ formatJson(rule.body.raw) }}</pre>
+                <table v-else-if="rule.body.formData?.filter(f => f.key).length" class="doc-table">
+                  <thead><tr><th>Key</th><th>Value</th><th>说明</th></tr></thead>
+                  <tbody>
+                    <tr v-for="f in rule.body.formData.filter(f => f.key)" :key="f.key">
+                      <td><code>{{ f.key }}</code></td>
+                      <td>{{ f.value || '-' }}</td>
+                      <td>{{ f.description || '-' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- 响应 -->
+              <div class="rule-section">
+                <h4>响应</h4>
+                <template v-if="rule.responseMode === 'basic'">
+                  <div class="response-meta">Content-Type: <code>{{ rule.responseType || 'application/json' }}</code></div>
+                  <pre v-if="rule.responseBasic" class="doc-pre">{{ rule.responseType?.includes('json') ? formatJson(rule.responseBasic) : rule.responseBasic }}</pre>
+                </template>
+                <div v-else class="response-meta" style="color: var(--text-secondary);">高级模式（脚本生成响应）</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div v-if="displayGroups.length === 0" class="doc-empty">
+        <div v-if="displayServices.length === 0" class="doc-empty">
           <el-empty description="暂无接口数据" :image-size="80" />
         </div>
       </div>
@@ -255,28 +266,38 @@ onMounted(() => {
 
 /* 左侧目录 */
 .doc-toc {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-color);
   padding: 12px;
   overflow-y: auto;
 }
 
-.toc-group { margin-bottom: 12px; }
+.toc-service { margin-bottom: 12px; }
+
+.toc-service-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-color);
+  padding: 6px 8px 2px;
+  margin-top: 4px;
+}
+
+.toc-group { margin-bottom: 8px; }
 
 .toc-group-title {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-secondary);
-  padding: 4px 8px;
-  margin-bottom: 4px;
+  padding: 4px 8px 4px 16px;
+  margin-bottom: 2px;
 }
 
 .toc-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 5px 8px 5px 24px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
@@ -295,19 +316,34 @@ onMounted(() => {
   padding: 20px 24px;
 }
 
-.doc-group-title {
-  font-size: 18px;
-  font-weight: 600;
+.doc-service-title {
+  font-size: 20px;
+  font-weight: 700;
   color: var(--primary-color);
   margin: 0 0 4px 0;
   padding-bottom: 8px;
   border-bottom: 2px solid var(--primary-color);
 }
 
-.doc-group-desc {
+.doc-service-desc {
   font-size: 13px;
   color: var(--text-secondary);
   margin: 4px 0 16px 0;
+}
+
+.doc-group-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 16px 0 4px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.doc-group-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0 12px 0;
 }
 
 .doc-rule-card {

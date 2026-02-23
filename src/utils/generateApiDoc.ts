@@ -1,30 +1,30 @@
-import type { MockGroup, Project } from '@/types/mock';
+import type { MockService, Project } from '@/types/mock';
 
 export interface DocOptions {
-  scope: 'all' | 'project' | 'group';
+  scope: 'all' | 'project' | 'service';
   projectId?: number | null;
-  groupId?: number | null;
+  serviceId?: number | null;
   projects?: Project[];
   showDisabled?: boolean;
 }
 
 /**
- * Generate Markdown documentation from MockGroup data
+ * Generate Markdown documentation from MockService data
  */
-export function generateMarkdownDoc(groups: MockGroup[], options: DocOptions): string {
-  let targetGroups = groups;
+export function generateMarkdownDoc(services: MockService[], options: DocOptions): string {
+  let targetServices = services;
 
   if (options.scope === 'project' && options.projectId) {
-    targetGroups = groups.filter(g => g.projectId === options.projectId);
-  } else if (options.scope === 'group' && options.groupId) {
-    targetGroups = groups.filter(g => g.id === options.groupId);
+    targetServices = services.filter(s => s.projectId === options.projectId);
+  } else if (options.scope === 'service' && options.serviceId) {
+    targetServices = services.filter(s => s.id === options.serviceId);
   }
 
   const lines: string[] = [];
   const title = options.scope === 'project'
     ? options.projects?.find(p => p.id === options.projectId)?.name || '项目'
-    : options.scope === 'group'
-    ? targetGroups[0]?.name || '分组'
+    : options.scope === 'service'
+    ? targetServices[0]?.name || '服务'
     : 'API';
 
   lines.push(`# ${title} 接口文档`);
@@ -35,12 +35,15 @@ export function generateMarkdownDoc(groups: MockGroup[], options: DocOptions): s
   // TOC
   lines.push('## 目录');
   lines.push('');
-  for (const group of targetGroups) {
-    lines.push(`- **${group.name}**${group.description ? ` - ${group.description}` : ''}`);
-    for (const rule of group.children) {
-      if (!options.showDisabled && !rule.active) continue;
-      const name = rule.name || rule.url;
-      lines.push(`  - \`${rule.method}\` ${name}`);
+  for (const service of targetServices) {
+    lines.push(`- **${service.name}**${service.description ? ` - ${service.description}` : ''}`);
+    for (const group of service.groups) {
+      lines.push(`  - **${group.name}**${group.description ? ` - ${group.description}` : ''}`);
+      for (const rule of group.children) {
+        if (!options.showDisabled && !rule.active) continue;
+        const name = rule.name || rule.url;
+        lines.push(`    - \`${rule.method}\` ${name}`);
+      }
     }
   }
   lines.push('');
@@ -48,92 +51,98 @@ export function generateMarkdownDoc(groups: MockGroup[], options: DocOptions): s
   lines.push('');
 
   // Detail
-  for (const group of targetGroups) {
-    lines.push(`## ${group.name}`);
-    if (group.description) lines.push(`> ${group.description}`);
+  for (const service of targetServices) {
+    lines.push(`## ${service.name}`);
+    if (service.description) lines.push(`> ${service.description}`);
     lines.push('');
 
-    for (const rule of group.children) {
-      if (!options.showDisabled && !rule.active) continue;
-      const name = rule.name || rule.url;
-      lines.push(`### ${name}`);
-      lines.push('');
-      lines.push(`- **方法**: \`${rule.method}\``);
-      lines.push(`- **路径**: \`${rule.url}\``);
-      lines.push(`- **状态**: ${rule.active ? '启用' : '禁用'}`);
-      if (rule.delay) lines.push(`- **延迟**: ${rule.delay}ms`);
+    for (const group of service.groups) {
+      lines.push(`### ${group.name}`);
+      if (group.description) lines.push(`> ${group.description}`);
       lines.push('');
 
-      // Request headers
-      const reqHeaders = rule.headers?.filter(h => h.key);
-      if (reqHeaders?.length) {
-        lines.push('#### 请求头');
+      for (const rule of group.children) {
+        if (!options.showDisabled && !rule.active) continue;
+        const name = rule.name || rule.url;
+        lines.push(`#### ${name}`);
         lines.push('');
-        lines.push('| Key | Value | 必填 | 说明 |');
-        lines.push('|-----|-------|------|------|');
-        for (const h of reqHeaders) {
-          lines.push(`| ${h.key} | ${h.value || '-'} | ${h.required ? '是' : '否'} | ${h.description || '-'} |`);
-        }
+        lines.push(`- **方法**: \`${rule.method}\``);
+        lines.push(`- **路径**: \`${rule.url}\``);
+        lines.push(`- **状态**: ${rule.active ? '启用' : '禁用'}`);
+        if (rule.delay) lines.push(`- **延迟**: ${rule.delay}ms`);
         lines.push('');
-      }
 
-      // Query params
-      const params = rule.params?.filter(p => p.key);
-      if (params?.length) {
-        lines.push('#### Query 参数');
-        lines.push('');
-        lines.push('| 参数名 | 示例值 | 必填 | 说明 |');
-        lines.push('|--------|--------|------|------|');
-        for (const p of params) {
-          lines.push(`| ${p.key} | ${p.value || '-'} | ${p.required ? '是' : '否'} | ${p.description || '-'} |`);
-        }
-        lines.push('');
-      }
-
-      // Request body
-      if (rule.body && rule.body.type !== 'none') {
-        lines.push('#### 请求体');
-        lines.push('');
-        lines.push(`类型: \`${rule.body.type}\``);
-        lines.push('');
-        if (rule.body.type === 'json' && rule.body.raw) {
-          lines.push('```json');
-          try { lines.push(JSON.stringify(JSON.parse(rule.body.raw), null, 2)); }
-          catch { lines.push(rule.body.raw); }
-          lines.push('```');
-        } else if (rule.body.formData?.length) {
-          lines.push('| Key | Value | 说明 |');
-          lines.push('|-----|-------|------|');
-          for (const f of rule.body.formData.filter(f => f.key)) {
-            lines.push(`| ${f.key} | ${f.value || '-'} | ${f.description || '-'} |`);
+        // Request headers
+        const reqHeaders = rule.headers?.filter(h => h.key);
+        if (reqHeaders?.length) {
+          lines.push('##### 请求头');
+          lines.push('');
+          lines.push('| Key | Value | 必填 | 说明 |');
+          lines.push('|-----|-------|------|------|');
+          for (const h of reqHeaders) {
+            lines.push(`| ${h.key} | ${h.value || '-'} | ${h.required ? '是' : '否'} | ${h.description || '-'} |`);
           }
+          lines.push('');
         }
-        lines.push('');
-      }
 
-      // Response
-      lines.push('#### 响应');
-      lines.push('');
-      if (rule.responseMode === 'basic') {
-        lines.push(`Content-Type: \`${rule.responseType || 'application/json'}\``);
-        lines.push('');
-        if (rule.responseBasic) {
-          const lang = rule.responseType?.includes('json') ? 'json' : 'text';
-          lines.push(`\`\`\`${lang}`);
-          if (lang === 'json') {
-            try { lines.push(JSON.stringify(JSON.parse(rule.responseBasic), null, 2)); }
-            catch { lines.push(rule.responseBasic); }
-          } else {
-            lines.push(rule.responseBasic);
+        // Query params
+        const params = rule.params?.filter(p => p.key);
+        if (params?.length) {
+          lines.push('##### Query 参数');
+          lines.push('');
+          lines.push('| 参数名 | 示例值 | 必填 | 说明 |');
+          lines.push('|--------|--------|------|------|');
+          for (const p of params) {
+            lines.push(`| ${p.key} | ${p.value || '-'} | ${p.required ? '是' : '否'} | ${p.description || '-'} |`);
           }
-          lines.push('```');
+          lines.push('');
         }
-      } else {
-        lines.push('> 高级模式（脚本生成响应）');
+
+        // Request body
+        if (rule.body && rule.body.type !== 'none') {
+          lines.push('##### 请求体');
+          lines.push('');
+          lines.push(`类型: \`${rule.body.type}\``);
+          lines.push('');
+          if (rule.body.type === 'json' && rule.body.raw) {
+            lines.push('```json');
+            try { lines.push(JSON.stringify(JSON.parse(rule.body.raw), null, 2)); }
+            catch { lines.push(rule.body.raw); }
+            lines.push('```');
+          } else if (rule.body.formData?.length) {
+            lines.push('| Key | Value | 说明 |');
+            lines.push('|-----|-------|------|');
+            for (const f of rule.body.formData.filter(f => f.key)) {
+              lines.push(`| ${f.key} | ${f.value || '-'} | ${f.description || '-'} |`);
+            }
+          }
+          lines.push('');
+        }
+
+        // Response
+        lines.push('##### 响应');
+        lines.push('');
+        if (rule.responseMode === 'basic') {
+          lines.push(`Content-Type: \`${rule.responseType || 'application/json'}\``);
+          lines.push('');
+          if (rule.responseBasic) {
+            const lang = rule.responseType?.includes('json') ? 'json' : 'text';
+            lines.push(`\`\`\`${lang}`);
+            if (lang === 'json') {
+              try { lines.push(JSON.stringify(JSON.parse(rule.responseBasic), null, 2)); }
+              catch { lines.push(rule.responseBasic); }
+            } else {
+              lines.push(rule.responseBasic);
+            }
+            lines.push('```');
+          }
+        } else {
+          lines.push('> 高级模式（脚本生成响应）');
+        }
+        lines.push('');
+        lines.push('---');
+        lines.push('');
       }
-      lines.push('');
-      lines.push('---');
-      lines.push('');
     }
   }
 

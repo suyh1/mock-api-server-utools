@@ -1,26 +1,15 @@
 /**
- * ApiPanel.vue - 接口管理主面板组件
+ * ApiPanel.vue - 接口管理主面板组件（基于 MockService 架构）
  *
- * 整个接口管理功能的核心容器，负责组合以下子组件：
- * - GroupSidebar：分组侧边栏，展示分组与接口树形结构
- * - ServiceConfigPanel：服务配置面板，管理分组级别的服务设置
- * - RuleEditor：接口编辑器，编辑单个接口的请求/响应规则
- *
- * 主要功能：
- * 1. 分组和接口的 CRUD 操作（通过 REST API 与后端交互）
- * 2. 测试结果缓存机制（localStorage 持久化 + 内存 blobUrl 缓存）
- * 3. 接口调试：支持 Mock 请求和真实接口请求两种模式
- * 4. 请求构建：支持自定义 Headers、Query 参数、Body（JSON / FormData）
- * 5. 响应处理：区分文本响应和二进制文件响应
- * 6. 复制接口完整 URL 功能
+ * 数据层级：MockService → MockServiceGroup → MockRule
+ * 数据源：/_admin/services
  */
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, reactive, inject } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import GroupSidebar from './GroupSidebar.vue';
 import RuleEditor from './RuleEditor.vue';
-import ServiceConfigPanel from './ServiceConfig.vue';
-import type { MockGroup, MockRule, TestResultFile, TestResultMeta, Project, HttpMethod } from '@/types/mock';
+import type { MockService, MockServiceGroup, MockRule, TestResultFile, TestResultMeta, Project, HttpMethod } from '@/types/mock';
 import { parseCurl } from '@/utils/curlParser';
 import { settingsKey } from '@/composables/useSettings';
 import { useRequestLogs } from '@/composables/useRequestLogs';
@@ -30,19 +19,18 @@ const appSettings = inject(settingsKey, null);
 const { addLog } = useRequestLogs();
 const envManager = inject(environmentsKey, null);
 
-/** 本机 IP 地址，用于拼接接口完整 URL */
 const localIp = ref('localhost');
-/** 管理后端 API 基础地址，组件挂载时从 window.services 获取 */
-const API_BASE = ref('http://localhost:3000'); // 默认值
-/** 分组数据列表，包含所有分组及其下属接口规则 */
-const groups = ref<MockGroup[]>([]);
+const API_BASE = ref('http://localhost:3000');
+
+/** 服务数据列表 */
+const services = ref<MockService[]>([]);
+/** 服务运行状态映射 */
+const serviceStatusMap = ref<Record<string, { running: boolean; port: number; prefix: string }>>({});
 
 // --- 项目选择 ---
 
 const PROJECT_STORAGE_KEY = 'mock-api-current-project';
-/** 项目列表 */
 const projects = ref<Project[]>([]);
-/** 当前选中的项目 ID，null 表示"全部项目" */
 const currentProjectId = ref<number | null>((() => {
   try {
     const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
@@ -51,7 +39,6 @@ const currentProjectId = ref<number | null>((() => {
   return null;
 })());
 
-/** 加载项目列表 */
 const loadProjects = async () => {
   try {
     const res = await fetch(`${API_BASE.value}/_admin/projects`);
@@ -60,11 +47,9 @@ const loadProjects = async () => {
   } catch {}
 };
 
-/** 切换项目时持久化并清空当前选中接口 */
 const handleProjectChange = (val: number | null) => {
   currentProjectId.value = val;
   currentRuleId.value = null;
-  configGroupId.value = null;
   editingRule.value = {};
   try {
     if (val === null) localStorage.removeItem(PROJECT_STORAGE_KEY);
@@ -74,35 +59,18 @@ const handleProjectChange = (val: number | null) => {
 
 // --- 视图状态 ---
 
-/** 当前选中的接口规则 ID，null 表示未选中任何接口 */
 const currentRuleId = ref<number | null>(null);
-/** 当前正在配置的分组 ID，非 null 时显示服务配置面板 */
-const configGroupId = ref<number | null>(null);
-/** 当前编辑中的接口数据（深拷贝，避免直接修改原始数据） */
 const editingRule = ref<Partial<MockRule>>({});
-/** 测试结果文本内容（文本类型响应） */
 const testResult = ref<string>('');
-/** 测试结果文件信息（二进制类型响应，如 PDF、图片等） */
 const testResultFile = ref<TestResultFile | null>(null);
-/** 测试结果元信息（状态码、耗时、响应头等） */
 const testResultMeta = ref<TestResultMeta | null>(null);
 
-// --- 测试结果缓存（按接口 ID 存储，持久化到 localStorage）---
+// --- 测试结果缓存 ---
 
-/** localStorage 中缓存测试结果的键名 */
 const TEST_CACHE_KEY = 'mock-api-test-results';
-/**
- * 测试结果缓存对象（响应式），以接口 ID 为键
- * 存储文本结果、元信息和文件信息（不含 blobUrl）
- */
 const testCache = reactive<Record<number, { result: string; meta: TestResultMeta | null; file: Omit<TestResultFile, 'blobUrl'> | null }>>({});
-/** 内存中的 blobUrl 缓存（Blob URL 无法序列化，不可持久化到 localStorage） */
 const blobCache = new Map<number, string>();
 
-/**
- * 从 localStorage 加载测试结果缓存
- * 在组件挂载时调用，恢复上次的测试结果
- */
 const loadTestCache = () => {
   try {
     const raw = localStorage.getItem(TEST_CACHE_KEY);
@@ -110,18 +78,10 @@ const loadTestCache = () => {
   } catch {}
 };
 
-/**
- * 将测试结果持久化到 localStorage
- * 每次缓存更新后调用
- */
 const saveTestCache = () => {
   try { localStorage.setItem(TEST_CACHE_KEY, JSON.stringify(testCache)); } catch {}
 };
 
-/**
- * 缓存当前选中接口的测试结果
- * 将文本结果、元信息、文件信息写入 testCache，blobUrl 写入 blobCache
- */
 const cacheCurrentResult = () => {
   const id = currentRuleId.value;
   if (!id) return;
@@ -134,11 +94,6 @@ const cacheCurrentResult = () => {
   saveTestCache();
 };
 
-/**
- * 恢复指定接口的缓存测试结果
- * 切换接口时调用，从缓存中还原之前的测试结果
- * @param ruleId - 要恢复缓存的接口 ID
- */
 const restoreCachedResult = (ruleId: number) => {
   const cached = testCache[ruleId];
   if (cached) {
@@ -157,31 +112,80 @@ const restoreCachedResult = (ruleId: number) => {
   }
 };
 
+// --- 辅助：查找 rule 所在的 service + group 上下文 ---
+
+function findRuleContext(ruleId: number): { service: MockService; group: MockServiceGroup; rule: MockRule } | null {
+  for (const service of services.value) {
+    for (const group of service.groups) {
+      const rule = group.children.find(r => r.id === ruleId);
+      if (rule) return { service, group, rule };
+    }
+  }
+  return null;
+}
+
 // --- 数据加载与保存 ---
 
-/**
- * 从后端加载所有分组和接口数据
- * 请求 /_admin/rules 接口获取完整的分组列表
- */
-const loadData = async () => { try { const res = await fetch(`${API_BASE.value}/_admin/rules`); if (!res.ok) throw new Error(); const data = (await res.json()) as MockGroup[]; groups.value = Array.isArray(data) ? data : []; } catch (e) { console.error(e); ElMessage.error('无法连接 Mock 服务器'); } };
-/**
- * 将当前分组和接口数据保存到后端
- * 通过 POST /_admin/rules 接口将完整数据提交到服务器
- */
-const saveData = async () => { try { await fetch(`${API_BASE.value}/_admin/rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(groups.value) }); } catch (e) { ElMessage.error('保存失败'); } };
+const loadData = async () => {
+  try {
+    const res = await fetch(`${API_BASE.value}/_admin/services`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    services.value = Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.error(e);
+    ElMessage.error('无法连接 Mock 服务器');
+  }
+};
 
-// --- 分组操作逻辑 ---
+const saveData = async () => {
+  try {
+    await fetch(`${API_BASE.value}/_admin/services`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(services.value),
+    });
+  } catch (e) {
+    ElMessage.error('保存失败');
+  }
+};
 
-/** 新建分组：弹出输入框，输入名称后添加到分组列表，自动关联当前项目 */
-const handleAddGroup = () => { ElMessageBox.prompt('请输入分组名称', '新建分组').then(({ value }: any) => { if (!value) return; groups.value.push({ id: Date.now(), name: value, projectId: currentProjectId.value ?? undefined, children: [] }); saveData(); }).catch(() => {}); };
-/** 重命名分组：弹出输入框，修改分组名称和描述后保存 */
-const handleRenameGroup = (group: MockGroup) => {
+const syncStatus = async () => {
+  try {
+    const res = await fetch(`${API_BASE.value}/_admin/service/status`);
+    const data = await res.json();
+    const map: Record<string, { running: boolean; port: number; prefix: string }> = {};
+    for (const [key, info] of Object.entries(data)) {
+      const s = info as any;
+      if (s.running) map[key] = { running: true, port: s.port, prefix: s.prefix || '' };
+    }
+    serviceStatusMap.value = map;
+  } catch {}
+};
+
+// --- 分组操作 ---
+
+const handleAddGroup = (service: MockService) => {
+  ElMessageBox.prompt('请输入分组名称', '新建分组').then(({ value }: any) => {
+    if (!value) return;
+    const realService = services.value.find(s => s.id === service.id);
+    if (!realService) return;
+    realService.groups.push({ id: Date.now(), name: value, subPrefix: '', children: [] });
+    saveData();
+  }).catch(() => {});
+};
+
+const handleRenameGroup = (service: MockService, group: MockServiceGroup) => {
   ElMessageBox({
     title: '编辑分组',
     message: `
       <div style="margin-bottom:12px">
         <label style="display:block;margin-bottom:4px;font-size:13px">分组名称</label>
         <input id="__group_name" value="${group.name}" style="width:100%;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;box-sizing:border-box" />
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="display:block;margin-bottom:4px;font-size:13px">子前缀（可选）</label>
+        <input id="__group_prefix" value="${group.subPrefix || ''}" placeholder="如 /users" style="width:100%;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;box-sizing:border-box" />
       </div>
       <div>
         <label style="display:block;margin-bottom:4px;font-size:13px">分组描述（可选）</label>
@@ -195,10 +199,12 @@ const handleRenameGroup = (group: MockGroup) => {
     beforeClose: (action, instance, done) => {
       if (action === 'confirm') {
         const nameEl = document.getElementById('__group_name') as HTMLInputElement;
+        const prefixEl = document.getElementById('__group_prefix') as HTMLInputElement;
         const descEl = document.getElementById('__group_desc') as HTMLInputElement;
         const name = nameEl?.value?.trim();
         if (name) {
           group.name = name;
+          group.subPrefix = prefixEl?.value?.trim() || '';
           group.description = descEl?.value?.trim() || undefined;
           saveData();
         }
@@ -207,30 +213,25 @@ const handleRenameGroup = (group: MockGroup) => {
     }
   }).catch(() => {});
 };
-/** 删除分组：确认后删除分组及其下所有接口，若当前选中接口在该分组内则清空选中状态 */
-const handleDeleteGroup = (idx: number) => {
-  const group = groups.value[idx];
+
+const handleDeleteGroup = (service: MockService, groupIdx: number) => {
+  const realService = services.value.find(s => s.id === service.id);
+  if (!realService) return;
+  const group = realService.groups[groupIdx];
   const count = group?.children?.length || 0;
   const msg = count > 0
     ? `确定删除分组「${group.name}」及其下的 ${count} 个接口吗？`
     : `确定删除空分组「${group.name}」吗？`;
   ElMessageBox.confirm(msg, '警告', { type: 'warning' }).then(() => {
     if (group.children.some(r => r.id === currentRuleId.value)) { currentRuleId.value = null; editingRule.value = {}; }
-    groups.value.splice(idx, 1);
+    realService.groups.splice(groupIdx, 1);
     saveData();
   }).catch(() => {});
 };
-/** 进入分组配置：设置 configGroupId 以显示服务配置面板 */
-const handleGroupConfig = (group: MockGroup) => { configGroupId.value = group.id; currentRuleId.value = null; };
 
-// --- 接口操作逻辑 ---
+// --- 接口操作 ---
 
-/**
- * 新建接口规则
- * 创建一个带有默认配置的新接口，添加到指定分组并自动选中
- * @param group - 目标分组
- */
-const handleAddRule = (group: MockGroup) => {
+const handleAddRule = (service: MockService, group: MockServiceGroup) => {
   const now = Date.now();
   const newRule: MockRule = {
     id: now,
@@ -241,74 +242,60 @@ const handleAddRule = (group: MockGroup) => {
     delay: appSettings?.defaultDelay ?? 0,
     createdAt: now,
     updatedAt: now,
-
     headers: [],
     params: [],
     body: { type: 'none', raw: '', formData: [] },
-
     responseHeaders: [],
     responseMode: 'basic',
     responseType: 'application/json',
     responseBasic: '{\n  "code": 200,\n  "msg": "Hello World"\n}',
     responseAdvanced: '',
   };
-  group.children.push(newRule);
-  handleSelectRule(newRule);
-  saveData();
+  const realService = services.value.find(s => s.id === service.id);
+  const realGroup = realService?.groups.find(g => g.id === group.id);
+  if (realGroup) {
+    realGroup.children.push(newRule);
+    handleSelectRule(newRule);
+    saveData();
+  }
 };
 
-/**
- * 选中接口规则
- * 深拷贝规则数据到编辑区，并恢复该接口的缓存测试结果
- * @param rule - 被选中的接口规则
- */
 const handleSelectRule = (rule: MockRule) => {
   currentRuleId.value = rule.id;
-  configGroupId.value = null;
   editingRule.value = JSON.parse(JSON.stringify(rule));
   restoreCachedResult(rule.id);
 };
 
-/** 切换接口启用/禁用状态后保存数据 */
 const handleToggleRule = () => { saveData(); };
 
-/**
- * 保存当前编辑中的接口规则
- * 将编辑区的数据合并回原始分组数据中，并提交到后端
- */
 const handleSaveRule = () => {
   if (editingRule.value.url && !editingRule.value.url.startsWith('/')) {
     editingRule.value.url = '/' + editingRule.value.url;
   }
   editingRule.value.updatedAt = Date.now();
-  for (const group of groups.value) {
-    const idx = group.children.findIndex(r => r.id === currentRuleId.value);
+  const ctx = findRuleContext(currentRuleId.value!);
+  if (ctx) {
+    const idx = ctx.group.children.findIndex(r => r.id === currentRuleId.value);
     if (idx !== -1) {
-      group.children[idx] = { ...group.children[idx], ...(editingRule.value as MockRule) };
+      ctx.group.children[idx] = { ...ctx.group.children[idx], ...(editingRule.value as MockRule) };
       saveData();
       ElMessage.success('保存成功');
-      return;
     }
   }
 };
 
-/**
- * 删除接口规则
- * 确认后从分组中移除接口，若删除的是当前选中接口则清空编辑器
- * @param group - 接口所属分组
- * @param rule - 要删除的接口规则
- */
-// 【更新】删除接口 (现在由 Sidebar 传入 group 和 rule)
-const handleDeleteRule = (group: MockGroup, rule: MockRule) => {
+const handleDeleteRule = (service: MockService, group: MockServiceGroup, rule: MockRule) => {
   ElMessageBox.confirm('确定删除该接口吗？', '提示', {
     type: 'warning',
     confirmButtonText: '删除',
     cancelButtonText: '取消'
   }).then(() => {
-    const idx = group.children.findIndex(r => r.id === rule.id);
+    const realService = services.value.find(s => s.id === service.id);
+    const realGroup = realService?.groups.find(g => g.id === group.id);
+    if (!realGroup) return;
+    const idx = realGroup.children.findIndex(r => r.id === rule.id);
     if (idx !== -1) {
-      group.children.splice(idx, 1);
-      // 如果删除的是当前选中的接口，清空编辑器
+      realGroup.children.splice(idx, 1);
       if (currentRuleId.value === rule.id) {
         currentRuleId.value = null;
         editingRule.value = {};
@@ -319,26 +306,21 @@ const handleDeleteRule = (group: MockGroup, rule: MockRule) => {
   }).catch(() => {});
 };
 
-/**
- * 复制当前编辑器中接口的完整 URL 到剪贴板
- * URL 格式：http://{localIp}:{port}{prefix}{path}
- */
-// 【新增】复制当前编辑器中的接口 URL
 const handleCopyCurrentUrl = () => {
-  // 找到当前选中规则所属的分组
-  const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-  if (group && editingRule.value.url) {
-    const port = group.config?.port || 3000;
-
-    let prefix = group.config?.prefix || '';
-    if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
-    if (prefix && prefix.endsWith('/')) prefix = prefix.slice(0, -1);
-
+  const ctx = findRuleContext(currentRuleId.value!);
+  if (ctx && editingRule.value.url) {
+    const svc = ctx.service;
+    const grp = ctx.group;
+    const port = svc.port || 3000;
+    let servicePrefix = svc.prefix || '';
+    if (servicePrefix && !servicePrefix.startsWith('/')) servicePrefix = '/' + servicePrefix;
+    if (servicePrefix && servicePrefix.endsWith('/')) servicePrefix = servicePrefix.slice(0, -1);
+    let groupPrefix = grp.subPrefix || '';
+    if (groupPrefix && !groupPrefix.startsWith('/')) groupPrefix = '/' + groupPrefix;
+    if (groupPrefix && groupPrefix.endsWith('/')) groupPrefix = groupPrefix.slice(0, -1);
     let urlPath = editingRule.value.url;
     if (!urlPath.startsWith('/')) urlPath = '/' + urlPath;
-
-    const fullUrl = `http://${localIp.value}:${port}${prefix}${urlPath}`;
-
+    const fullUrl = `http://${localIp.value}:${port}${servicePrefix}${groupPrefix}${urlPath}`;
     navigator.clipboard.writeText(fullUrl).then(() => {
       ElMessage.success(`已复制: ${fullUrl}`);
     }).catch(() => {
@@ -347,21 +329,11 @@ const handleCopyCurrentUrl = () => {
   }
 };
 
-/**
- * 更新分组数据
- * 由 ServiceConfigPanel 子组件触发，将修改后的分组数据同步回列表
- * @param updatedGroup - 更新后的分组对象
- */
-const handleUpdateGroup = (updatedGroup: MockGroup) => {
-  const idx = groups.value.findIndex(g => g.id === updatedGroup.id);
-  if (idx !== -1) groups.value[idx] = updatedGroup;
-};
-
 // --- 接口复制/移动/排序 ---
 
-/** 复制接口到目标分组 */
-const handleCopyRule = (rule: MockRule, targetGroupId: number) => {
-  const targetGroup = groups.value.find(g => g.id === targetGroupId);
+const handleCopyRule = (rule: MockRule, targetServiceId: number, targetGroupId: number) => {
+  const targetService = services.value.find(s => s.id === targetServiceId);
+  const targetGroup = targetService?.groups.find(g => g.id === targetGroupId);
   if (!targetGroup) return;
   const now = Date.now();
   const copied: MockRule = { ...JSON.parse(JSON.stringify(rule)), id: now, createdAt: now, updatedAt: now };
@@ -370,35 +342,40 @@ const handleCopyRule = (rule: MockRule, targetGroupId: number) => {
   ElMessage.success(`已复制到「${targetGroup.name}」`);
 };
 
-/** 移动接口到目标分组 */
-const handleMoveRule = (rule: MockRule, sourceGroup: MockGroup, targetGroupId: number) => {
-  const targetGroup = groups.value.find(g => g.id === targetGroupId);
-  const srcGroup = groups.value.find(g => g.id === sourceGroup.id);
-  if (!targetGroup || !srcGroup) return;
+const handleMoveRule = (rule: MockRule, sourceService: MockService, sourceGroup: MockServiceGroup, targetServiceId: number, targetGroupId: number) => {
+  const srcService = services.value.find(s => s.id === sourceService.id);
+  const srcGroup = srcService?.groups.find(g => g.id === sourceGroup.id);
+  const tgtService = services.value.find(s => s.id === targetServiceId);
+  const tgtGroup = tgtService?.groups.find(g => g.id === targetGroupId);
+  if (!srcGroup || !tgtGroup) return;
   const idx = srcGroup.children.findIndex(r => r.id === rule.id);
   if (idx === -1) return;
   const [moved] = srcGroup.children.splice(idx, 1);
-  targetGroup.children.push(moved);
+  tgtGroup.children.push(moved);
   if (currentRuleId.value === rule.id) {
     currentRuleId.value = null;
     editingRule.value = {};
   }
   saveData();
-  ElMessage.success(`已移动到「${targetGroup.name}」`);
+  ElMessage.success(`已移动到「${tgtGroup.name}」`);
 };
 
-/** 拖拽排序接口 */
-const handleReorderRule = (group: MockGroup, fromIdx: number, toIdx: number) => {
-  const realGroup = groups.value.find(g => g.id === group.id);
-  if (!realGroup) return;
-  const [item] = realGroup.children.splice(fromIdx, 1);
-  realGroup.children.splice(toIdx, 0, item);
-  saveData();
+const handleReorderRule = (group: MockServiceGroup, fromIdx: number, toIdx: number) => {
+  // 在 services 中找到实际的 group 引用
+  for (const svc of services.value) {
+    const realGroup = svc.groups.find(g => g.id === group.id);
+    if (realGroup) {
+      const [item] = realGroup.children.splice(fromIdx, 1);
+      realGroup.children.splice(toIdx, 0, item);
+      saveData();
+      return;
+    }
+  }
 };
 
-/** 克隆接口（在同一分组内创建副本） */
-const handleCloneRule = (rule: MockRule, group: MockGroup) => {
-  const realGroup = groups.value.find(g => g.id === group.id);
+const handleCloneRule = (rule: MockRule, service: MockService, group: MockServiceGroup) => {
+  const realService = services.value.find(s => s.id === service.id);
+  const realGroup = realService?.groups.find(g => g.id === group.id);
   if (!realGroup) return;
   const now = Date.now();
   const cloned: MockRule = {
@@ -408,7 +385,6 @@ const handleCloneRule = (rule: MockRule, group: MockGroup) => {
     createdAt: now,
     updatedAt: now,
   };
-  // 插入到原规则后方
   const idx = realGroup.children.findIndex(r => r.id === rule.id);
   realGroup.children.splice(idx + 1, 0, cloned);
   handleSelectRule(cloned);
@@ -416,8 +392,7 @@ const handleCloneRule = (rule: MockRule, group: MockGroup) => {
   ElMessage.success('接口已复制');
 };
 
-/** 从 cURL 导入接口 */
-const handleCurlImport = (group: MockGroup) => {
+const handleCurlImport = (service: MockService, group: MockServiceGroup) => {
   const curlText = sidebarRef.value?.curlImportText;
   if (!curlText) return;
   const parsed = parseCurl(curlText);
@@ -426,17 +401,15 @@ const handleCurlImport = (group: MockGroup) => {
     return;
   }
 
-  const realGroup = groups.value.find(g => g.id === group.id);
+  const realService = services.value.find(s => s.id === service.id);
+  const realGroup = realService?.groups.find(g => g.id === group.id);
   if (!realGroup) return;
 
-  // 从 URL 提取路径
   let urlPath = parsed.url;
   try {
     const urlObj = new URL(parsed.url);
     urlPath = urlObj.pathname + urlObj.search;
-  } catch {
-    // 如果不是完整 URL，保持原样
-  }
+  } catch {}
 
   const validMethods = ['GET', 'POST', 'PUT', 'DELETE'] as const;
   const method = validMethods.includes(parsed.method as any) ? parsed.method as HttpMethod : 'GET';
@@ -453,11 +426,7 @@ const handleCurlImport = (group: MockGroup) => {
     updatedAt: now,
     headers: parsed.headers.filter(h => h.key.toLowerCase() !== 'content-type').map(h => ({ key: h.key, value: h.value })),
     params: [],
-    body: {
-      type: parsed.body ? 'json' : 'none',
-      raw: parsed.body || '',
-      formData: [],
-    },
+    body: { type: parsed.body ? 'json' : 'none', raw: parsed.body || '', formData: [] },
     responseHeaders: [],
     responseMode: 'basic',
     responseType: 'application/json',
@@ -473,10 +442,11 @@ const handleCurlImport = (group: MockGroup) => {
 
 /** 保存测试用例 */
 const handleSaveTestCase = async (testcase: any) => {
-  // 填充 groupId
-  const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-  if (group) testcase.groupId = group.id;
-
+  const ctx = findRuleContext(currentRuleId.value!);
+  if (ctx) {
+    testcase.serviceId = ctx.service.id;
+    testcase.groupId = ctx.group.id;
+  }
   try {
     await fetch(`${API_BASE.value}/_admin/testcase/save`, {
       method: 'POST',
@@ -496,24 +466,24 @@ const handleBatchAction = (action: string, ruleIds: number[]) => {
 
   switch (action) {
     case 'enable':
-      groups.value.forEach(g => g.children.forEach(r => {
+      services.value.forEach(s => s.groups.forEach(g => g.children.forEach(r => {
         if (idSet.has(r.id)) r.active = true;
-      }));
+      })));
       saveData();
       ElMessage.success(`已启用 ${ruleIds.length} 个接口`);
       break;
     case 'disable':
-      groups.value.forEach(g => g.children.forEach(r => {
+      services.value.forEach(s => s.groups.forEach(g => g.children.forEach(r => {
         if (idSet.has(r.id)) r.active = false;
-      }));
+      })));
       saveData();
       ElMessage.success(`已禁用 ${ruleIds.length} 个接口`);
       break;
     case 'delete':
       ElMessageBox.confirm(`确定批量删除 ${ruleIds.length} 个接口吗？`, '批量删除', { type: 'warning' }).then(() => {
-        groups.value.forEach(g => {
+        services.value.forEach(s => s.groups.forEach(g => {
           g.children = g.children.filter(r => !idSet.has(r.id));
-        });
+        }));
         if (currentRuleId.value && idSet.has(currentRuleId.value)) {
           currentRuleId.value = null;
           editingRule.value = {};
@@ -541,41 +511,39 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 };
 
-/**
- * 计算属性：当前选中接口所属分组的服务配置
- * 用于传递给 RuleEditor，让编辑器感知分组级别的配置（如端口、前缀等）
- */
-// 当前规则所属分组的配置
-const currentGroupConfig = computed(() => {
-  const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-  return group?.config;
+/** 当前规则所属服务的配置（传递给 RuleEditor） */
+const currentServiceForRule = computed(() => {
+  if (!currentRuleId.value) return null;
+  const ctx = findRuleContext(currentRuleId.value);
+  return ctx?.service || null;
 });
 
-/** 当前选中接口所属分组名称（面包屑用） */
-const currentGroupName = computed(() => {
-  const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-  return group?.name || '';
+/** 当前规则所属分组（传递给 RuleEditor） */
+const currentGroupForRule = computed(() => {
+  if (!currentRuleId.value) return null;
+  const ctx = findRuleContext(currentRuleId.value);
+  return ctx?.group || null;
 });
 
-/** 是否正在请求中 */
+/** 面包屑：服务名 > 分组名 */
+const currentBreadcrumb = computed(() => {
+  const ctx = currentRuleId.value ? findRuleContext(currentRuleId.value) : null;
+  if (!ctx) return '';
+  return `${ctx.service.name} > ${ctx.group.name}`;
+});
+
 const isTesting = ref(false);
 
-/**
- * 构建真实接口的完整 URL
- * 优先使用接口级别的 realConfig 配置，缺省时回退到分组级别的配置
- * URL 格式：{protocol}://{host}:{port}{prefix}{path}
- * @returns 拼接后的完整 URL，若未配置 host 则返回空字符串
- */
-// 构建真实接口完整 URL（接口级别覆盖分组配置）
+/** 构建真实接口完整 URL（接口级别覆盖服务配置） */
 const buildRealUrl = () => {
-  const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-  const gc = group?.config;
+  const ctx = currentRuleId.value ? findRuleContext(currentRuleId.value) : null;
+  const svc = ctx?.service;
   const rc = editingRule.value.realConfig;
 
-  const protocol = rc?.protocol || gc?.realProtocol || 'http';
-  const host = rc?.host || gc?.realHost || '';
-  const port = rc?.port || gc?.realPort || '';
-  let prefix = rc?.prefix ?? gc?.realPrefix ?? '';
+  const protocol = rc?.protocol || svc?.realProtocol || 'http';
+  const host = rc?.host || svc?.realHost || '';
+  const port = rc?.port || svc?.realPort || '';
+  let prefix = rc?.prefix ?? svc?.realPrefix ?? '';
   let path = rc?.path ?? editingRule.value.url ?? '';
 
   if (!host) return '';
@@ -588,22 +556,7 @@ const buildRealUrl = () => {
   return url;
 };
 
-/**
- * 执行接口调试请求
- * 支持两种模式：
- * - mock：请求本地 Mock 服务，使用分组配置的端口和前缀
- * - real：请求真实后端接口，从 realConfig 构建 URL
- *
- * 请求流程：
- * 1. 根据模式构建目标 URL
- * 2. 组装请求选项（method、headers、body、query 参数）
- * 3. 发送 fetch 请求并计时
- * 4. 根据响应 Content-Type 区分文本/二进制处理
- * 5. 缓存测试结果
- *
- * @param mode - 请求模式，'mock' 或 'real'，默认 'mock'
- */
-// ... runTest 支持 mock 和 real 两种模式 ...
+/** 执行接口调试请求 */
 const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
   isTesting.value = true;
   testResult.value = '';
@@ -615,47 +568,47 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
 
   try {
     if (mode === 'real') {
-      // 请求真实接口：从 realConfig + 分组配置构建 URL
       targetUrl = buildRealUrl();
       if (!targetUrl) {
         testResult.value = 'Error: 未配置真实接口地址，请在服务配置中设置';
         return;
       }
     } else {
-      // 请求 Mock 服务：优先使用分组配置的端口
       if (!editingRule.value.url) {
         testResult.value = 'Error: 未配置接口路径';
         return;
       }
-      const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-      if (group?.config?.running && group.config.port) {
-        let prefix = group.config.prefix || '';
-        if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
-        if (prefix && prefix.endsWith('/')) prefix = prefix.slice(0, -1);
+      const ctx = currentRuleId.value ? findRuleContext(currentRuleId.value) : null;
+      const svc = ctx?.service;
+      const grp = ctx?.group;
+      const isRunning = svc && serviceStatusMap.value[String(svc.id)]?.running;
+
+      if (isRunning && svc) {
+        let servicePrefix = svc.prefix || '';
+        if (servicePrefix && !servicePrefix.startsWith('/')) servicePrefix = '/' + servicePrefix;
+        if (servicePrefix && servicePrefix.endsWith('/')) servicePrefix = servicePrefix.slice(0, -1);
+        let groupPrefix = grp?.subPrefix || '';
+        if (groupPrefix && !groupPrefix.startsWith('/')) groupPrefix = '/' + groupPrefix;
+        if (groupPrefix && groupPrefix.endsWith('/')) groupPrefix = groupPrefix.slice(0, -1);
         let urlPath = editingRule.value.url || '';
         if (urlPath && !urlPath.startsWith('/')) urlPath = '/' + urlPath;
-        targetUrl = `http://${localIp.value}:${group.config.port}${prefix}${urlPath}`;
+        targetUrl = `http://${localIp.value}:${svc.port}${servicePrefix}${groupPrefix}${urlPath}`;
       } else {
-        targetUrl = API_BASE.value + (editingRule.value.url || '');
+        testResult.value = 'Error: 服务未启动，请先在「服务」模块中启动该服务';
+        isTesting.value = false;
+        return;
       }
     }
 
-    // 构建请求选项
     const method = editingRule.value.method || 'GET';
     const fetchOptions: RequestInit = { method };
-
-    // 环境变量替换函数
     const rv = (s: string) => envManager?.resolveVariables(s) ?? s;
-
-    // 对 URL 进行环境变量替换
     targetUrl = rv(targetUrl);
 
-    // 添加自定义请求头
     editingRule.value.headers?.forEach(h => {
       if (h.key && h.value) customHeaders[rv(h.key)] = rv(h.value);
     });
 
-    // 添加请求体
     if (method !== 'GET' && editingRule.value.body) {
       const bodyDef = editingRule.value.body;
       if (bodyDef.type === 'json' && bodyDef.raw) {
@@ -663,48 +616,30 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
         fetchOptions.body = rv(bodyDef.raw);
       } else if (bodyDef.type === 'form-data' && bodyDef.formData?.length) {
         const formData = new FormData();
-        bodyDef.formData.forEach(item => {
-          if (item.key) formData.append(item.key, item.value || '');
-        });
+        bodyDef.formData.forEach(item => { if (item.key) formData.append(item.key, item.value || ''); });
         fetchOptions.body = formData;
       }
     }
 
-    if (Object.keys(customHeaders).length > 0) {
-      fetchOptions.headers = customHeaders;
-    }
+    if (Object.keys(customHeaders).length > 0) fetchOptions.headers = customHeaders;
 
-    // 添加 query 参数
     if (editingRule.value.params?.length) {
       const url = new URL(targetUrl);
-      editingRule.value.params.forEach(p => {
-        if (p.key) url.searchParams.set(p.key, p.value || '');
-      });
+      editingRule.value.params.forEach(p => { if (p.key) url.searchParams.set(p.key, p.value || ''); });
       targetUrl = url.toString();
     }
 
-    // 发送请求
     const startTime = Date.now();
     const res = await fetch(targetUrl, fetchOptions);
     const elapsed = Date.now() - startTime;
 
-    // 构建结果展示
     const resHeaders: Record<string, string> = {};
     res.headers.forEach((v, k) => { resHeaders[k] = v; });
 
-    testResultMeta.value = {
-      mode,
-      method,
-      url: targetUrl,
-      status: res.status,
-      statusText: res.statusText,
-      time: elapsed,
-      headers: resHeaders,
-    };
+    testResultMeta.value = { mode, method, url: targetUrl, status: res.status, statusText: res.statusText, time: elapsed, headers: resHeaders };
 
     const contentType = res.headers.get('content-type') || '';
-    const binaryPatterns = ['application/pdf', 'application/zip', 'application/octet-stream',
-      'video/', 'audio/', 'image/', 'application/vnd.openxmlformats', 'application/msword'];
+    const binaryPatterns = ['application/pdf', 'application/zip', 'application/octet-stream', 'video/', 'audio/', 'image/', 'application/vnd.openxmlformats', 'application/msword'];
     const isBinary = binaryPatterns.some(p => contentType.includes(p));
 
     let responseBodyForLog: string | undefined;
@@ -715,62 +650,37 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
       const filenameMatch = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
       const urlFilename = targetUrl.split('/').pop()?.split('?')[0] || 'download';
       const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : urlFilename;
-
-      testResultFile.value = {
-        filename,
-        size: blob.size,
-        contentType,
-        blobUrl: URL.createObjectURL(blob),
-      };
+      testResultFile.value = { filename, size: blob.size, contentType, blobUrl: URL.createObjectURL(blob) };
       responseBodyForLog = `[Binary: ${filename}, ${blob.size} bytes]`;
     } else {
       const text = await res.text();
       responseBodyForLog = text;
-      try {
-        testResult.value = JSON.stringify(JSON.parse(text), null, 2);
-      } catch {
-        testResult.value = text;
-      }
+      try { testResult.value = JSON.stringify(JSON.parse(text), null, 2); } catch { testResult.value = text; }
     }
 
-    // 记录成功日志
-    const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-    const rule = group?.children.find(r => r.id === currentRuleId.value);
+    const ctx = currentRuleId.value ? findRuleContext(currentRuleId.value) : null;
     addLog({
-      timestamp: Date.now(),
-      method: method as any,
-      url: targetUrl,
-      status: res.status,
-      statusText: res.statusText,
-      duration: elapsed,
-      mode,
-      ruleId: currentRuleId.value ?? undefined,
-      ruleName: rule?.name || rule?.url,
-      groupName: group?.name,
+      timestamp: Date.now(), method: method as any, url: targetUrl, status: res.status, statusText: res.statusText,
+      duration: elapsed, mode, ruleId: currentRuleId.value ?? undefined,
+      ruleName: ctx?.rule?.name || ctx?.rule?.url,
+      groupName: ctx?.group?.name,
+      serviceName: ctx?.service?.name,
       requestHeaders: customHeaders,
       requestBody: fetchOptions.body ? String(fetchOptions.body) : undefined,
-      responseHeaders: resHeaders,
-      responseBody: responseBodyForLog,
+      responseHeaders: resHeaders, responseBody: responseBodyForLog,
     });
 
   } catch (e: any) {
     testResult.value = `Error: ${e.message}`;
-    // 记录失败日志
-    const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
-    const rule = group?.children.find(r => r.id === currentRuleId.value);
+    const ctx = currentRuleId.value ? findRuleContext(currentRuleId.value) : null;
     addLog({
-      timestamp: Date.now(),
-      method: editingRule.value.method || 'GET',
-      url: targetUrl,
-      status: 0,
-      statusText: 'Error',
-      duration: 0,
-      mode,
+      timestamp: Date.now(), method: editingRule.value.method || 'GET', url: targetUrl,
+      status: 0, statusText: 'Error', duration: 0, mode,
       ruleId: currentRuleId.value ?? undefined,
-      ruleName: rule?.name || rule?.url,
-      groupName: group?.name,
-      requestHeaders: customHeaders,
-      error: e.message,
+      ruleName: ctx?.rule?.name || ctx?.rule?.url,
+      groupName: ctx?.group?.name,
+      serviceName: ctx?.service?.name,
+      requestHeaders: customHeaders, error: e.message,
     });
   }
   isTesting.value = false;
@@ -779,46 +689,29 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
 
 // --- 侧边栏拖拽调整宽度 ---
 
-/** 侧边栏宽度（像素），默认 220px */
-const sidebarWidth = ref(220);
-/** 侧边栏最小宽度 */
+const sidebarWidth = ref(240);
 const SIDEBAR_MIN = 160;
-/** 侧边栏最大宽度 */
 const SIDEBAR_MAX = 400;
-/** 是否正在拖拽 */
 const isDragging = ref(false);
 
-/**
- * 拖拽开始：记录初始位置，绑定 mousemove/mouseup 事件
- */
 function onDragStart(e: MouseEvent) {
   e.preventDefault();
   isDragging.value = true;
   const startX = e.clientX;
   const startWidth = sidebarWidth.value;
-
   const onMouseMove = (ev: MouseEvent) => {
     const delta = ev.clientX - startX;
-    const newWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + delta));
-    sidebarWidth.value = newWidth;
+    sidebarWidth.value = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + delta));
   };
-
   const onMouseUp = () => {
     isDragging.value = false;
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
   };
-
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
 }
 
-/**
- * 组件挂载生命周期
- * 1. 从 window.services 获取本机 IP 和服务器地址
- * 2. 加载测试结果缓存
- * 3. 从后端加载分组和接口数据
- */
 onMounted(() => {
   if (window.services) {
     localIp.value = window.services.getLocalIP();
@@ -827,6 +720,7 @@ onMounted(() => {
   loadTestCache();
   loadData();
   loadProjects();
+  syncStatus();
   document.addEventListener('keydown', handleKeydown);
 });
 
@@ -836,21 +730,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- 主面板容器：全高布局 -->
   <div class="api-panel" :class="{ 'is-dragging': isDragging }">
-    <!-- 左侧：分组侧边栏，宽度可拖拽调整 -->
     <div class="sidebar-wrapper" :style="{ width: sidebarWidth + 'px' }">
       <GroupSidebar
           ref="sidebarRef"
-          :groups="groups"
+          :services="services"
           :currentRuleId="currentRuleId"
           :projects="projects"
           :currentProjectId="currentProjectId"
+          :serviceStatusMap="serviceStatusMap"
           @project-change="handleProjectChange"
           @group-add="handleAddGroup"
           @group-rename="handleRenameGroup"
           @group-delete="handleDeleteGroup"
-          @group-config="handleGroupConfig"
           @rule-add="handleAddRule"
           @rule-select="handleSelectRule"
           @rule-toggle="handleToggleRule"
@@ -862,41 +754,29 @@ onUnmounted(() => {
           @curl-import="handleCurlImport"
           @batch-action="handleBatchAction"
       />
-      <!-- 拖拽分隔条 -->
       <div class="resize-handle" @mousedown="onDragStart"></div>
     </div>
 
-    <!-- 右侧内容区域：根据状态显示不同面板 -->
     <div class="main-content">
-      <!-- 服务配置面板：当选中分组配置时显示 -->
-      <ServiceConfigPanel
-          v-if="configGroupId"
-          :group="groups.find(g => g.id === configGroupId)!"
-          @update:group="handleUpdateGroup"
-          @save="saveData"
-      />
-
-      <!-- 接口编辑器：当选中具体接口时显示 -->
       <RuleEditor
-          v-else-if="currentRuleId"
+          v-if="currentRuleId"
           v-model="editingRule"
           :testResult="testResult"
           :testResultFile="testResultFile"
           :testResultMeta="testResultMeta"
           :hasSelection="true"
-          :groupConfig="currentGroupConfig"
+          :service="currentServiceForRule"
+          :group="currentGroupForRule"
           :localIp="localIp"
-          :groupName="currentGroupName"
+          :groupName="currentBreadcrumb"
           :isTesting="isTesting"
           @save="handleSaveRule"
           @copy="handleCopyCurrentUrl"
           @test="handleRunTest"
           @save-testcase="handleSaveTestCase"
       />
-
-      <!-- 空状态提示：未选中任何接口或分组配置时显示 -->
       <div v-else class="empty-container">
-        <el-empty :description="groups.length ? '从左侧选择一个接口开始编辑，或点击分组的 ⚙ 配置服务' : '点击左上角 + 创建第一个分组'" />
+        <el-empty :description="services.length ? '从左侧选择一个接口开始编辑' : '请先在「服务」模块中创建服务和分组'" />
       </div>
     </div>
   </div>
@@ -909,13 +789,11 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* 拖拽时禁用文本选择和 iframe 指针事件 */
 .api-panel.is-dragging {
   user-select: none;
   cursor: col-resize;
 }
 
-/* 侧边栏容器：包含 GroupSidebar + 拖拽条 */
 .sidebar-wrapper {
   position: relative;
   flex-shrink: 0;
@@ -923,7 +801,6 @@ onUnmounted(() => {
   height: 100%;
 }
 
-/* 拖拽分隔条 */
 .resize-handle {
   position: absolute;
   right: -3px;
@@ -940,7 +817,6 @@ onUnmounted(() => {
   opacity: 0.4;
 }
 
-/* 右侧主内容区 */
 .main-content {
   flex: 1;
   overflow: hidden;
