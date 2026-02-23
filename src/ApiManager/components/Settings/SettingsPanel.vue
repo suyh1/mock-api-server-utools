@@ -479,7 +479,7 @@ const openGithub = () => {
         <div class="about-hero">
           <div class="about-logo">M</div>
           <h2 class="about-name">Mock API Server</h2>
-          <span class="about-ver">v1.6.2</span>
+<!--          <span class="about-ver">v1.6.2</span>-->
         </div>
         <p class="about-desc">一款集 Mock 服务与接口管理于一体的 uTools 插件。支持多项目多分组管理、基础/高级双模式响应、Mock.js 数据模板与智能生成、真实接口代理调试、WebSocket Mock、场景切换、请求日志、数据模板复用，以及 30+ 内置开发工具。</p>
         <div class="about-links">
