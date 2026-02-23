@@ -25,8 +25,12 @@ const net = require('net')
 const vm = require('vm')
 /** Node.js HTTP 模块，用于创建 WS 底层 HTTP 服务 */
 const http = require('http')
+/** Node.js HTTPS 模块，用于代理录制 HTTPS 请求 */
+const https = require('https')
 /** WebSocket 库 */
 const WebSocket = require('ws')
+/** Node.js URL 模块 */
+const urlModule = require('url')
 
 /**
  * 尝试加载 mockjs 库
@@ -41,6 +45,32 @@ try {
 }
 
 /* ==================== 工具函数 ==================== */
+
+/**
+ * 规范化 URL 前缀：确保以 / 开头，去除末尾 /
+ * @param {string} p - 前缀字符串
+ * @returns {string} 规范化后的前缀，空值返回空字符串
+ */
+function normalizePrefix(p) {
+  if (!p) return '';
+  if (!p.startsWith('/')) p = '/' + p;
+  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+  return p;
+}
+
+/**
+ * 尝试从 URL 中剥离前缀，带边界检查
+ * @param {string} url - 当前请求路径
+ * @param {string} prefix - 原始前缀
+ * @returns {{ ok: boolean, rest: string }} ok=true 时 rest 为剥离后的路径
+ */
+function stripPrefix(url, prefix) {
+  const np = normalizePrefix(prefix);
+  if (!np) return { ok: true, rest: url };
+  if (url === np) return { ok: true, rest: '/' };
+  if (url.startsWith(np + '/')) return { ok: true, rest: url.slice(np.length) };
+  return { ok: false, rest: url };
+}
 
 /**
  * 获取本机局域网 IPv4 地址
@@ -62,6 +92,119 @@ const LOCAL_IP = getLocalIP();
 const ADMIN_PORT = 3000;
 /** uTools 数据库中存储 Mock 规则的键名 */
 const DB_KEY = 'mock_rules_v1';
+/** uTools 数据库中存储测试用例的键名 */
+const TESTCASES_DB_KEY = 'mock_testcases_v1';
+/** uTools 数据库中存储测试套件的键名 */
+const TESTSUITES_DB_KEY = 'mock_testsuites_v1';
+
+/* ==================== 路径参数匹配工具 ==================== */
+
+/**
+ * 匹配路径参数模式（如 /users/:id/posts/:postId）
+ * @param {string} pattern - 路径模式（含 :param 占位符）
+ * @param {string} actual - 实际请求路径
+ * @returns {{ matched: boolean, params: Object }} 匹配结果及提取的参数
+ */
+function matchPathPattern(pattern, actual) {
+  if (!pattern || !actual) return { matched: false, params: {} };
+  const patternParts = pattern.split('/').filter(Boolean);
+  const actualParts = actual.split('/').filter(Boolean);
+  if (patternParts.length !== actualParts.length) return { matched: false, params: {} };
+  const params = {};
+  for (let i = 0; i < patternParts.length; i++) {
+    if (patternParts[i].startsWith(':')) {
+      params[patternParts[i].slice(1)] = actualParts[i];
+    } else if (patternParts[i] !== actualParts[i]) {
+      return { matched: false, params: {} };
+    }
+  }
+  return { matched: true, params };
+}
+
+/**
+ * 判断 URL 模式中是否包含路径参数
+ * @param {string} url - URL 模式
+ * @returns {boolean}
+ */
+function hasPathParams(url) {
+  return url && url.includes(':');
+}
+
+/* ==================== 条件响应（Mock 期望）匹配工具 ==================== */
+
+/**
+ * 从嵌套对象中按 JSON path 取值
+ * @param {Object} obj - 目标对象
+ * @param {string} path - 路径（如 data.user.name）
+ * @returns {*} 取到的值
+ */
+function getByPath(obj, path) {
+  if (!obj || !path) return undefined;
+  return path.split('.').reduce((o, k) => (o != null ? o[k] : undefined), obj);
+}
+
+/**
+ * 评估单个条件
+ * @param {Object} condition - 期望条件 { source, key, operator, value }
+ * @param {Object} req - Express 请求对象
+ * @param {Object} pathParams - 路径参数
+ * @returns {boolean}
+ */
+function evaluateCondition(condition, req, pathParams) {
+  let actual;
+  switch (condition.source) {
+    case 'query':
+      actual = req.query[condition.key];
+      break;
+    case 'header':
+      actual = req.headers[condition.key.toLowerCase()];
+      break;
+    case 'body':
+      actual = getByPath(req.body, condition.key);
+      break;
+    case 'pathParam':
+      actual = pathParams[condition.key];
+      break;
+    default:
+      return false;
+  }
+
+  const expected = condition.value;
+
+  switch (condition.operator) {
+    case 'equals':
+      return String(actual) === String(expected);
+    case 'contains':
+      return actual != null && String(actual).includes(expected);
+    case 'regex':
+      try { return actual != null && new RegExp(expected).test(String(actual)); } catch { return false; }
+    case 'exists':
+      return actual !== undefined && actual !== null && actual !== '';
+    case 'gt':
+      return actual != null && Number(actual) > Number(expected);
+    case 'lt':
+      return actual != null && Number(actual) < Number(expected);
+    default:
+      return false;
+  }
+}
+
+/**
+ * 查找第一个匹配的期望
+ * @param {Array} expectations - 期望列表
+ * @param {Object} req - Express 请求对象
+ * @param {Object} pathParams - 路径参数
+ * @returns {Object|null} 匹配到的期望对象
+ */
+function findMatchingExpectation(expectations, req, pathParams) {
+  if (!expectations || !expectations.length) return null;
+  for (const exp of expectations) {
+    if (!exp.conditions || !exp.conditions.length) continue;
+    const allMatch = exp.conditions.every(c => evaluateCondition(c, req, pathParams || {}));
+    if (allMatch) return exp;
+  }
+  return null;
+}
 
 /* ==================== Window Services（暴露给渲染进程的接口） ==================== */
 
@@ -116,10 +259,157 @@ function saveGroups(groups) {
   }
 }
 
+/* ==================== Mock Services 数据管理（新架构） ==================== */
+
+/** uTools 数据库中存储 MockService 的键名 */
+const DB_SERVICES_KEY = 'mock_services_v1';
+
+/**
+ * 从 uTools 数据库读取所有 MockService
+ * @returns {Array} 服务数组
+ */
+function getMockServices() {
+  const doc = utools.db.get(DB_SERVICES_KEY);
+  return doc ? doc.data : [];
+}
+
+/**
+ * 将 MockService 数据保存到 uTools 数据库
+ * @param {Array} services - 服务数组
+ */
+function saveMockServices(services) {
+  const doc = utools.db.get(DB_SERVICES_KEY);
+  if (doc) {
+    utools.db.put({ _id: DB_SERVICES_KEY, data: services, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: DB_SERVICES_KEY, data: services });
+  }
+}
+
+/**
+ * 数据迁移：将旧 MockGroup 数据迁移到新 MockService 结构
+ * 仅在 mock_services_v1 为空但 mock_rules_v1 有数据时执行
+ */
+function migrateGroupsToServices() {
+  const existingServices = getMockServices();
+  if (existingServices.length > 0) return; // 已有服务数据，跳过迁移
+
+  const groups = getGroups();
+  if (!groups || groups.length === 0) return; // 无旧数据，跳过
+
+  const projects = getProjects();
+  const now = Date.now();
+
+  // 按 projectId 分组
+  const projectGroupMap = new Map(); // projectId -> groups[]
+  const orphanGroups = []; // 无 projectId 的分组
+
+  for (const group of groups) {
+    if (group.projectId) {
+      if (!projectGroupMap.has(group.projectId)) {
+        projectGroupMap.set(group.projectId, []);
+      }
+      projectGroupMap.get(group.projectId).push(group);
+    } else {
+      orphanGroups.push(group);
+    }
+  }
+
+  const newServices = [];
+  let serviceIdCounter = now;
+
+  // 为每个项目创建一个默认服务
+  for (const [projectId, projectGroups] of projectGroupMap) {
+    const project = projects.find(p => p.id === projectId);
+    const firstGroupConfig = projectGroups.find(g => g.config)?.config || {};
+
+    serviceIdCounter++;
+    const service = {
+      id: serviceIdCounter,
+      name: project ? `${project.name} 服务` : `项目${projectId} 服务`,
+      description: '从旧数据自动迁移',
+      projectId: projectId,
+      port: firstGroupConfig.port || 3888,
+      prefix: firstGroupConfig.prefix || '',
+      running: false,
+      realProtocol: firstGroupConfig.realProtocol || '',
+      realHost: firstGroupConfig.realHost || '',
+      realPort: firstGroupConfig.realPort || '',
+      realPrefix: firstGroupConfig.realPrefix || '',
+      proxyEnabled: firstGroupConfig.proxyEnabled || false,
+      proxyTarget: firstGroupConfig.proxyTarget || '',
+      groups: projectGroups.map((g, idx) => ({
+        id: now + idx + 1000,
+        name: g.name,
+        description: g.description || '',
+        subPrefix: '',
+        children: g.children || [],
+      })),
+      createdAt: now,
+      updatedAt: now,
+    };
+    newServices.push(service);
+  }
+
+  // 无 projectId 的分组 → 创建"默认项目" + "默认服务"
+  if (orphanGroups.length > 0) {
+    // 查找或创建默认项目
+    let defaultProject = projects.find(p => p.name === '默认项目');
+    if (!defaultProject) {
+      defaultProject = {
+        id: now + 9000,
+        name: '默认项目',
+        icon: '📦',
+        description: '自动迁移创建的默认项目',
+        createdAt: now,
+        updatedAt: now,
+      };
+      projects.push(defaultProject);
+      saveProjects(projects);
+    }
+
+    const firstOrphanConfig = orphanGroups.find(g => g.config)?.config || {};
+    serviceIdCounter++;
+    const defaultService = {
+      id: serviceIdCounter,
+      name: '默认服务',
+      description: '从旧数据自动迁移',
+      projectId: defaultProject.id,
+      port: firstOrphanConfig.port || 3888,
+      prefix: firstOrphanConfig.prefix || '',
+      running: false,
+      realProtocol: firstOrphanConfig.realProtocol || '',
+      realHost: firstOrphanConfig.realHost || '',
+      realPort: firstOrphanConfig.realPort || '',
+      realPrefix: firstOrphanConfig.realPrefix || '',
+      proxyEnabled: firstOrphanConfig.proxyEnabled || false,
+      proxyTarget: firstOrphanConfig.proxyTarget || '',
+      groups: orphanGroups.map((g, idx) => ({
+        id: now + idx + 2000,
+        name: g.name,
+        description: g.description || '',
+        subPrefix: '',
+        children: g.children || [],
+      })),
+      createdAt: now,
+      updatedAt: now,
+    };
+    newServices.push(defaultService);
+  }
+
+  if (newServices.length > 0) {
+    saveMockServices(newServices);
+    console.log(`[Migration] Migrated ${groups.length} groups into ${newServices.length} services`);
+  }
+}
+
 /* ==================== 动态 Mock 服务管理器 ==================== */
 
-/** 运行中的 Mock 服务实例映射表，key 为分组 ID，value 为 { server, port, prefix } */
+/** 运行中的 Mock 服务实例映射表（旧架构：key 为分组 ID） */
 const runningServices = new Map();
+
+/** 运行中的 Service 实例映射表（新架构：key 为 serviceId） */
+const runningServiceServers = new Map();
 
 /**
  * 启动指定分组的 Mock 服务
@@ -161,24 +451,47 @@ function startGroupServer(rawGroupId, port, prefix) {
       if (url === '/') return;
 
       if (prefix) {
-        const normalizedPrefix = prefix.startsWith('/') ? prefix : '/' + prefix;
-        if (!url.startsWith(normalizedPrefix)) return res.status(404).json({ error: `Path prefix mismatch: ${normalizedPrefix}` });
-        url = url.slice(normalizedPrefix.length);
-        if (!url.startsWith('/')) url = '/' + url;
+        const result = stripPrefix(url, prefix);
+        if (!result.ok) return res.status(404).json({ error: `Path prefix mismatch: ${normalizePrefix(prefix)}` });
+        url = result.rest;
       }
 
       const groups = getGroups();
       const targetGroup = groups.find(g => String(g.id) === groupId);
       if (!targetGroup) return res.status(404).json({ error: 'Group not found' });
 
-      const matchedRule = targetGroup.children.find(r => {
+      // 两遍匹配策略：先精确匹配，再路径参数匹配
+      let matchedRule = null;
+      let pathParams = {};
+
+      // 第一遍：精确匹配（优先级最高）
+      matchedRule = targetGroup.children.find(r => {
           let ruleUrl = r.url;
           if (ruleUrl && !ruleUrl.startsWith('/')) ruleUrl = '/' + ruleUrl;
           return r.active && r.method === method && ruleUrl === url;
       });
 
+      // 第二遍：路径参数匹配（仅当精确匹配失败时尝试）
+      if (!matchedRule) {
+        for (const r of targetGroup.children) {
+          if (!r.active || r.method !== method) continue;
+          let ruleUrl = r.url;
+          if (ruleUrl && !ruleUrl.startsWith('/')) ruleUrl = '/' + ruleUrl;
+          if (!hasPathParams(ruleUrl)) continue;
+          const result = matchPathPattern(ruleUrl, url);
+          if (result.matched) {
+            matchedRule = r;
+            pathParams = result.params;
+            break;
+          }
+        }
+      }
+
       if (matchedRule) {
-        console.log(`[Group ${groupId}] Hit: ${method} ${url}`);
+        console.log(`[Group ${groupId}] Hit: ${method} ${url}`, Object.keys(pathParams).length ? `params: ${JSON.stringify(pathParams)}` : '');
+
+        // 将路径参数挂载到 req 上
+        req.params = { ...(req.params || {}), ...pathParams };
 
         // 1. 入参校验（检查必填的 Header 和 Query 参数）
         const missing = [];
@@ -190,22 +503,39 @@ function startGroupServer(rawGroupId, port, prefix) {
         });
         if (missing.length > 0) return res.status(400).json({ error: 'Validation failed', details: missing });
 
-        // 2. 模拟网络延迟（毫秒）
-        if (matchedRule.delay > 0) await new Promise(r => setTimeout(r, matchedRule.delay));
+        // 2. 模拟网络延迟（支持范围随机延迟）
+        const delayMin = matchedRule.delay || 0;
+        const delayMax = matchedRule.delayMax || 0;
+        let actualDelay = delayMin;
+        if (delayMax > delayMin) {
+          actualDelay = Math.floor(Math.random() * (delayMax - delayMin) + delayMin);
+        }
+        if (actualDelay > 0) await new Promise(r => setTimeout(r, actualDelay));
 
         // 3. 设置自定义响应头
         matchedRule.responseHeaders?.forEach(h => {
           if (h.key && h.value) res.setHeader(h.key, h.value);
         });
 
-        // 4. 预设覆盖：如果有激活的预设，用预设配置替代默认响应
+        // 4. 条件响应（Mock 期望）：优先级最高
         let activeMode = matchedRule.responseMode || 'basic';
         let activeResponseType = matchedRule.responseType || 'application/json';
         let activeResponseBasic = matchedRule.responseBasic;
         let activeResponseAdvanced = matchedRule.responseAdvanced;
         let activeStatusCode = 200;
+        let mockjsEnabled = matchedRule.mockjsEnabled || false;
 
-        if (matchedRule.activePresetId && matchedRule.responsePresets) {
+        const matchedExpectation = findMatchingExpectation(matchedRule.expectations, req, pathParams);
+        if (matchedExpectation) {
+          activeMode = matchedExpectation.responseMode || 'basic';
+          activeResponseType = matchedExpectation.responseType || 'application/json';
+          activeResponseBasic = matchedExpectation.responseBasic;
+          activeResponseAdvanced = matchedExpectation.responseAdvanced;
+          activeStatusCode = matchedExpectation.statusCode || 200;
+          console.log(`[Group ${groupId}] Matched expectation: ${matchedExpectation.name} (${activeStatusCode})`);
+        }
+        // 5. 预设覆盖：如果有激活的预设且没有匹配到期望
+        else if (matchedRule.activePresetId && matchedRule.responsePresets) {
           const preset = matchedRule.responsePresets.find(p => p.id === matchedRule.activePresetId);
           if (preset) {
             activeMode = preset.responseMode || 'basic';
@@ -217,7 +547,7 @@ function startGroupServer(rawGroupId, port, prefix) {
           }
         }
 
-        // 5. 生成响应数据（核心逻辑：区分基础模式和高级模式）
+        // 6. 生成响应数据（核心逻辑：区分基础模式和高级模式）
         try {
           let responseData;
 
@@ -230,7 +560,8 @@ function startGroupServer(rawGroupId, port, prefix) {
                 body: req.body,
                 headers: req.headers,
                 method: req.method,
-                path: req.path
+                path: req.path,
+                params: pathParams
               },
               Mock,
               console
@@ -276,7 +607,19 @@ function startGroupServer(rawGroupId, port, prefix) {
                 res.status(500).json({ error: 'Failed to read response file', message: e.message });
               }
             } else {
-              const bodyStr = activeResponseBasic || '{}';
+              let bodyStr = activeResponseBasic || '{}';
+
+              // 基础模式 Mock.js 支持：若开关启用且为 JSON 类型，则通过 Mock.mock() 处理
+              if (mockjsEnabled && contentType.includes('json')) {
+                try {
+                  const parsed = JSON.parse(bodyStr);
+                  bodyStr = JSON.stringify(Mock.mock(parsed));
+                } catch (e) {
+                  // JSON 解析失败则原样返回
+                  console.warn('[Mock.js] Failed to process basic response:', e.message);
+                }
+              }
+
               res.status(activeStatusCode).send(bodyStr);
             }
           }
@@ -287,7 +630,82 @@ function startGroupServer(rawGroupId, port, prefix) {
         }
 
       } else {
-        res.status(404).json({ error: `No rule matched ${method} ${url}` });
+        // 代理录制：无规则匹配时，若代理启用则转发请求
+        const groupConfig = targetGroup.config;
+        if (groupConfig && groupConfig.proxyEnabled && groupConfig.proxyTarget) {
+          try {
+            const proxyTarget = groupConfig.proxyTarget.replace(/\/$/, '');
+            const proxyUrl = proxyTarget + url;
+            console.log(`[Group ${groupId}] Proxy: ${method} ${proxyUrl}`);
+
+            const parsed = new URL(proxyUrl);
+            const httpModule = parsed.protocol === 'https:' ? https : http;
+            const proxyHeaders = { ...req.headers };
+            delete proxyHeaders.host;
+
+            const proxyReq = httpModule.request({
+              hostname: parsed.hostname,
+              port: parsed.port,
+              path: parsed.pathname + parsed.search,
+              method: method,
+              headers: proxyHeaders,
+            }, (proxyRes) => {
+              const chunks = [];
+              proxyRes.on('data', chunk => chunks.push(chunk));
+              proxyRes.on('end', () => {
+                const body = Buffer.concat(chunks);
+                const contentType = proxyRes.headers['content-type'] || 'application/json';
+
+                // 返回代理响应
+                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                res.end(body);
+
+                // 自动录制为新 Mock 规则（限制最多 50 条自动录制）
+                const recordedCount = targetGroup.children.filter(r => r.name && r.name.startsWith('[录制]')).length;
+                if (recordedCount < 50 && contentType.includes('json') || contentType.includes('text')) {
+                  const now = Date.now();
+                  const newRule = {
+                    id: now,
+                    name: `[录制] ${method} ${url}`,
+                    active: true,
+                    method: method,
+                    url: url,
+                    delay: 0,
+                    createdAt: now,
+                    updatedAt: now,
+                    headers: [],
+                    params: [],
+                    body: { type: 'none', raw: '', formData: [] },
+                    responseHeaders: [],
+                    responseMode: 'basic',
+                    responseType: contentType.split(';')[0].trim(),
+                    responseBasic: body.toString('utf-8'),
+                    responseAdvanced: '',
+                  };
+                  targetGroup.children.push(newRule);
+                  saveGroups(groups);
+                  console.log(`[Group ${groupId}] Recorded: ${method} ${url}`);
+                }
+              });
+            });
+
+            proxyReq.on('error', (e) => {
+              console.error('[Proxy] Error:', e.message);
+              res.status(502).json({ error: 'Proxy request failed', message: e.message });
+            });
+
+            // 转发请求体
+            if (req.body && method !== 'GET' && method !== 'HEAD') {
+              const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+              proxyReq.write(bodyStr);
+            }
+            proxyReq.end();
+          } catch (e) {
+            res.status(502).json({ error: 'Proxy error', message: e.message });
+          }
+        } else {
+          res.status(404).json({ error: `No rule matched ${method} ${url}` });
+        }
       }
     });
 
@@ -310,6 +728,299 @@ function stopGroupServer(rawGroupId) {
   if (runningServices.has(groupId)) {
     runningServices.get(groupId).server.close();
     runningServices.delete(groupId);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 启动指定 MockService 的 Mock 服务（新架构）
+ * @description 一个 Express 实例服务该 service 下所有分组的规则。
+ *              URL 匹配流程：剥离 servicePrefix → 遍历 groups 尝试剥离 subPrefix → 规则匹配
+ * @param {string|number} rawServiceId - 服务 ID
+ * @param {number} port - 监听端口号
+ * @param {string} servicePrefix - 服务级 URL 前缀
+ * @returns {Promise<{success: boolean, ip: string}>} 启动结果
+ */
+function startServiceServer(rawServiceId, port, servicePrefix) {
+  return new Promise((resolve, reject) => {
+    const serviceId = String(rawServiceId);
+
+    if (runningServiceServers.has(serviceId)) {
+      const existing = runningServiceServers.get(serviceId);
+      if (existing.port === port) {
+        existing.prefix = servicePrefix;
+        return resolve({ success: true, ip: LOCAL_IP, msg: 'Service updated' });
+      }
+      existing.server.close();
+      runningServiceServers.delete(serviceId);
+    }
+
+    const app = express();
+    app.use(cors());
+    app.use(bodyParser.json());
+    app.use(bodyParser.urlencoded({ extended: true }));
+    app.use(bodyParser.text({ type: ['text/*', 'application/xml', 'application/javascript'] }));
+    app.use(bodyParser.raw({ type: ['application/pdf', 'application/zip', 'application/octet-stream', 'video/*'] }));
+
+    app.get('/', (req, res) => res.send(`Mock Service ${serviceId} running on port ${port}`));
+
+    app.use(async (req, res) => {
+      const method = req.method;
+      let url = req.path;
+
+      if (url === '/') return;
+
+      // 1. 剥离 servicePrefix
+      if (servicePrefix) {
+        const result = stripPrefix(url, servicePrefix);
+        if (!result.ok) return res.status(404).json({ error: `Service prefix mismatch: ${normalizePrefix(servicePrefix)}` });
+        url = result.rest;
+      }
+
+      // 重新读取最新服务数据
+      const services = getMockServices();
+      const targetService = services.find(s => String(s.id) === serviceId);
+      if (!targetService) return res.status(404).json({ error: 'Service not found' });
+
+      // 2. 遍历 groups，尝试剥离 subPrefix，进行规则匹配
+      let matchedRule = null;
+      let pathParams = {};
+      let matchedGroup = null;
+
+      for (const group of (targetService.groups || [])) {
+        let matchUrl = url;
+
+        // 剥离 group.subPrefix
+        if (group.subPrefix) {
+          const result = stripPrefix(matchUrl, group.subPrefix);
+          if (!result.ok) continue;
+          matchUrl = result.rest;
+        }
+
+        // 第一遍：精确匹配
+        const exactMatch = (group.children || []).find(r => {
+          let ruleUrl = r.url;
+          if (ruleUrl && !ruleUrl.startsWith('/')) ruleUrl = '/' + ruleUrl;
+          return r.active && r.method === method && ruleUrl === matchUrl;
+        });
+
+        if (exactMatch) {
+          matchedRule = exactMatch;
+          matchedGroup = group;
+          break;
+        }
+
+        // 第二遍：路径参数匹配
+        for (const r of (group.children || [])) {
+          if (!r.active || r.method !== method) continue;
+          let ruleUrl = r.url;
+          if (ruleUrl && !ruleUrl.startsWith('/')) ruleUrl = '/' + ruleUrl;
+          if (!hasPathParams(ruleUrl)) continue;
+          const result = matchPathPattern(ruleUrl, matchUrl);
+          if (result.matched) {
+            matchedRule = r;
+            pathParams = result.params;
+            matchedGroup = group;
+            break;
+          }
+        }
+        if (matchedRule) break;
+      }
+
+      if (matchedRule) {
+        console.log(`[Service ${serviceId}] Hit: ${method} ${url}`, Object.keys(pathParams).length ? `params: ${JSON.stringify(pathParams)}` : '');
+
+        req.params = { ...(req.params || {}), ...pathParams };
+
+        // 入参校验
+        const missing = [];
+        matchedRule.headers?.forEach(h => {
+          if (h.required && h.key && !req.headers[h.key.toLowerCase()]) missing.push(`Missing header: ${h.key}`);
+        });
+        matchedRule.params?.forEach(p => {
+          if (p.required && p.key && !req.query[p.key]) missing.push(`Missing query: ${p.key}`);
+        });
+        if (missing.length > 0) return res.status(400).json({ error: 'Validation failed', details: missing });
+
+        // 延迟
+        const delayMin = matchedRule.delay || 0;
+        const delayMax = matchedRule.delayMax || 0;
+        let actualDelay = delayMin;
+        if (delayMax > delayMin) {
+          actualDelay = Math.floor(Math.random() * (delayMax - delayMin) + delayMin);
+        }
+        if (actualDelay > 0) await new Promise(r => setTimeout(r, actualDelay));
+
+        // 设置自定义响应头
+        matchedRule.responseHeaders?.forEach(h => {
+          if (h.key && h.value) res.setHeader(h.key, h.value);
+        });
+
+        // 条件响应 / 预设覆盖
+        let activeMode = matchedRule.responseMode || 'basic';
+        let activeResponseType = matchedRule.responseType || 'application/json';
+        let activeResponseBasic = matchedRule.responseBasic;
+        let activeResponseAdvanced = matchedRule.responseAdvanced;
+        let activeStatusCode = 200;
+        let mockjsEnabled = matchedRule.mockjsEnabled || false;
+
+        const matchedExpectation = findMatchingExpectation(matchedRule.expectations, req, pathParams);
+        if (matchedExpectation) {
+          activeMode = matchedExpectation.responseMode || 'basic';
+          activeResponseType = matchedExpectation.responseType || 'application/json';
+          activeResponseBasic = matchedExpectation.responseBasic;
+          activeResponseAdvanced = matchedExpectation.responseAdvanced;
+          activeStatusCode = matchedExpectation.statusCode || 200;
+        } else if (matchedRule.activePresetId && matchedRule.responsePresets) {
+          const preset = matchedRule.responsePresets.find(p => p.id === matchedRule.activePresetId);
+          if (preset) {
+            activeMode = preset.responseMode || 'basic';
+            activeResponseType = preset.responseType || 'application/json';
+            activeResponseBasic = preset.responseBasic;
+            activeResponseAdvanced = preset.responseAdvanced;
+            activeStatusCode = preset.statusCode || 200;
+          }
+        }
+
+        // 生成响应
+        try {
+          if (activeMode === 'advanced' && activeResponseAdvanced) {
+            const script = new vm.Script(activeResponseAdvanced);
+            const sandbox = {
+              req: { query: req.query, body: req.body, headers: req.headers, method: req.method, path: req.path, params: pathParams },
+              Mock, console
+            };
+            const context = vm.createContext(sandbox);
+            script.runInContext(context);
+            if (typeof sandbox.main === 'function') {
+              const responseData = await sandbox.main(sandbox.req, sandbox.Mock);
+              res.status(activeStatusCode).json(responseData);
+            } else {
+              throw new Error('Main function not defined in script');
+            }
+          } else {
+            const contentType = activeResponseType || 'application/json';
+            res.setHeader('Content-Type', contentType);
+            const binaryTypes = ['application/pdf', 'application/zip', 'application/octet-stream', 'video/mp4', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            if (binaryTypes.some(t => contentType.includes(t))) {
+              const filePath = matchedRule.responseFile;
+              if (!filePath) return res.status(400).json({ error: 'No file configured for this binary response type' });
+              if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Response file not found', path: filePath });
+              const fileBuffer = fs.readFileSync(filePath);
+              const fileName = path.basename(filePath);
+              res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+              res.status(activeStatusCode).send(fileBuffer);
+            } else {
+              let bodyStr = activeResponseBasic || '{}';
+              if (mockjsEnabled && contentType.includes('json')) {
+                try {
+                  const parsed = JSON.parse(bodyStr);
+                  bodyStr = JSON.stringify(Mock.mock(parsed));
+                } catch (e) {
+                  console.warn('[Mock.js] Failed to process basic response:', e.message);
+                }
+              }
+              res.status(activeStatusCode).send(bodyStr);
+            }
+          }
+        } catch (e) {
+          console.error('Mock execution error:', e);
+          res.status(500).json({ error: 'Mock execution failed', message: e.message });
+        }
+
+      } else {
+        // 代理录制：从 service 级别读取代理配置
+        if (targetService.proxyEnabled && targetService.proxyTarget) {
+          try {
+            const proxyTarget = targetService.proxyTarget.replace(/\/$/, '');
+            const proxyUrl = proxyTarget + url;
+            console.log(`[Service ${serviceId}] Proxy: ${method} ${proxyUrl}`);
+
+            const parsed = new URL(proxyUrl);
+            const httpModule = parsed.protocol === 'https:' ? https : http;
+            const proxyHeaders = { ...req.headers };
+            delete proxyHeaders.host;
+
+            const proxyReq = httpModule.request({
+              hostname: parsed.hostname,
+              port: parsed.port,
+              path: parsed.pathname + parsed.search,
+              method: method,
+              headers: proxyHeaders,
+            }, (proxyRes) => {
+              const chunks = [];
+              proxyRes.on('data', chunk => chunks.push(chunk));
+              proxyRes.on('end', () => {
+                const body = Buffer.concat(chunks);
+                const contentType = proxyRes.headers['content-type'] || 'application/json';
+                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                res.end(body);
+
+                // 自动录制到第一个分组
+                const firstGroup = targetService.groups && targetService.groups[0];
+                if (firstGroup) {
+                  const recordedCount = firstGroup.children.filter(r => r.name && r.name.startsWith('[录制]')).length;
+                  if (recordedCount < 50 && (contentType.includes('json') || contentType.includes('text'))) {
+                    const now2 = Date.now();
+                    firstGroup.children.push({
+                      id: now2,
+                      name: `[录制] ${method} ${url}`,
+                      active: true, method, url,
+                      delay: 0, createdAt: now2, updatedAt: now2,
+                      headers: [], params: [],
+                      body: { type: 'none', raw: '', formData: [] },
+                      responseHeaders: [],
+                      responseMode: 'basic',
+                      responseType: contentType.split(';')[0].trim(),
+                      responseBasic: body.toString('utf-8'),
+                      responseAdvanced: '',
+                    });
+                    saveMockServices(services);
+                    console.log(`[Service ${serviceId}] Recorded: ${method} ${url}`);
+                  }
+                }
+              });
+            });
+
+            proxyReq.on('error', (e) => {
+              console.error('[Proxy] Error:', e.message);
+              res.status(502).json({ error: 'Proxy request failed', message: e.message });
+            });
+
+            if (req.body && method !== 'GET' && method !== 'HEAD') {
+              const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+              proxyReq.write(bodyStr);
+            }
+            proxyReq.end();
+          } catch (e) {
+            res.status(502).json({ error: 'Proxy error', message: e.message });
+          }
+        } else {
+          res.status(404).json({ error: `No rule matched ${method} ${url}` });
+        }
+      }
+    });
+
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log(`Service ${serviceId} started: http://${LOCAL_IP}:${port}`);
+      runningServiceServers.set(serviceId, { server, port, prefix: servicePrefix });
+      resolve({ success: true, ip: LOCAL_IP });
+    });
+    server.on('error', (err) => reject(err));
+  });
+}
+
+/**
+ * 停止指定 MockService 的 Mock 服务（新架构）
+ * @param {string|number} rawServiceId - 服务 ID
+ * @returns {boolean} 是否成功停止
+ */
+function stopServiceServer(rawServiceId) {
+  const serviceId = String(rawServiceId);
+  if (runningServiceServers.has(serviceId)) {
+    runningServiceServers.get(serviceId).server.close();
+    runningServiceServers.delete(serviceId);
     return true;
   }
   return false;
@@ -384,6 +1095,65 @@ function saveTemplates(templates) {
   }
 }
 
+/* ==================== 环境变量数据管理 ==================== */
+
+/** uTools 数据库中存储环境变量的键名 */
+const DB_ENV_KEY = 'mock_environments_v1';
+
+/**
+ * 从 uTools 数据库读取所有环境
+ * @returns {Array} 环境数组
+ */
+function getEnvironments() {
+  const doc = utools.db.get(DB_ENV_KEY);
+  return doc ? doc.data : [];
+}
+
+/**
+ * 将环境数据保存到 uTools 数据库
+ * @param {Array} environments - 环境数组
+ */
+function saveEnvironments(environments) {
+  const doc = utools.db.get(DB_ENV_KEY);
+  if (doc) {
+    utools.db.put({ _id: DB_ENV_KEY, data: environments, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: DB_ENV_KEY, data: environments });
+  }
+}
+
+/* ==================== 测试用例 CRUD ==================== */
+
+function getTestCases() {
+  const doc = utools.db.get(TESTCASES_DB_KEY);
+  return doc ? doc.data : [];
+}
+
+function saveTestCases(testcases) {
+  const doc = utools.db.get(TESTCASES_DB_KEY);
+  if (doc) {
+    utools.db.put({ _id: TESTCASES_DB_KEY, data: testcases, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: TESTCASES_DB_KEY, data: testcases });
+  }
+}
+
+/* ==================== 测试套件 CRUD ==================== */
+
+function getTestSuites() {
+  const doc = utools.db.get(TESTSUITES_DB_KEY);
+  return doc ? doc.data : [];
+}
+
+function saveTestSuites(suites) {
+  const doc = utools.db.get(TESTSUITES_DB_KEY);
+  if (doc) {
+    utools.db.put({ _id: TESTSUITES_DB_KEY, data: suites, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: TESTSUITES_DB_KEY, data: suites });
+  }
+}
+
 /* ==================== Admin 管理服务器 ==================== */
 
 /** Admin Express 应用实例 */
@@ -395,21 +1165,8 @@ adminApp.use(bodyParser.json());
 adminApp.get('/_admin/rules', (req, res) => res.json(getGroups()));
 /** POST /_admin/rules - 保存分组规则（全量覆盖） */
 adminApp.post('/_admin/rules', (req, res) => { saveGroups(req.body); res.json({ success: true }); });
-/** POST /_admin/service/start - 启动指定分组的 Mock 服务 */
-adminApp.post('/_admin/service/start', async (req, res) => {
-  try { res.json(await startGroupServer(req.body.groupId, parseInt(req.body.port), req.body.prefix || '')); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-/** POST /_admin/service/stop - 停止指定分组的 Mock 服务 */
-adminApp.post('/_admin/service/stop', (req, res) => { stopGroupServer(req.body.groupId); res.json({ success: true }); });
 /** POST /_admin/service/check - 检测端口是否可用 */
 adminApp.post('/_admin/service/check', async (req, res) => { res.json({ available: await checkPort(parseInt(req.body.port)) }); });
-/** GET /_admin/service/status - 获取所有运行中服务的状态 */
-adminApp.get('/_admin/service/status', (req, res) => {
-  const status = {};
-  for (const [gid, info] of runningServices) status[gid] = { running: true, port: info.port, prefix: info.prefix };
-  res.json(status);
-});
 /** GET /_admin/templates - 获取所有模板 */
 adminApp.get('/_admin/templates', (req, res) => {
   res.json(getTemplates());
@@ -452,6 +1209,109 @@ adminApp.post('/_admin/template/delete', (req, res) => {
 
 /* -------------------- 项目管理 API -------------------- */
 
+/** GET /_admin/environments - 获取所有环境 */
+adminApp.get('/_admin/environments', (req, res) => {
+  res.json(getEnvironments());
+});
+
+/** POST /_admin/environment/save - 创建/更新环境 */
+adminApp.post('/_admin/environment/save', (req, res) => {
+  const env = req.body;
+  if (!env.name) {
+    return res.status(400).json({ error: 'Environment name is required' });
+  }
+  const environments = getEnvironments();
+  const idx = environments.findIndex(e => e.id === env.id);
+  if (idx !== -1) {
+    environments[idx] = { ...environments[idx], ...env, id: environments[idx].id, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    environments.push({ ...env, id: now, createdAt: now, updatedAt: now });
+  }
+  saveEnvironments(environments);
+  res.json({ success: true, data: environments });
+});
+
+/** POST /_admin/environment/delete - 删除环境 */
+adminApp.post('/_admin/environment/delete', (req, res) => {
+  const { id } = req.body;
+  const environments = getEnvironments().filter(e => e.id !== id);
+  saveEnvironments(environments);
+  res.json({ success: true, data: environments });
+});
+
+/* --- 测试用例 API --- */
+
+/** GET /_admin/testcases - 获取所有测试用例 */
+adminApp.get('/_admin/testcases', (req, res) => {
+  res.json(getTestCases());
+});
+
+/** POST /_admin/testcases - 保存所有测试用例 */
+adminApp.post('/_admin/testcases', (req, res) => {
+  saveTestCases(req.body);
+  res.json({ success: true });
+});
+
+/** POST /_admin/testcase/save - 创建/更新测试用例 */
+adminApp.post('/_admin/testcase/save', (req, res) => {
+  const tc = req.body;
+  const testcases = getTestCases();
+  const idx = testcases.findIndex(t => t.id === tc.id);
+  if (idx !== -1) {
+    testcases[idx] = { ...testcases[idx], ...tc, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    testcases.push({ ...tc, id: now, createdAt: now, updatedAt: now });
+  }
+  saveTestCases(testcases);
+  res.json({ success: true, data: testcases });
+});
+
+/** POST /_admin/testcase/delete - 删除测试用例 */
+adminApp.post('/_admin/testcase/delete', (req, res) => {
+  const { id } = req.body;
+  const testcases = getTestCases().filter(t => t.id !== id);
+  saveTestCases(testcases);
+  res.json({ success: true, data: testcases });
+});
+
+/* --- 测试套件 API --- */
+
+/** GET /_admin/testsuites - 获取所有测试套件 */
+adminApp.get('/_admin/testsuites', (req, res) => {
+  res.json(getTestSuites());
+});
+
+/** POST /_admin/testsuites - 保存所有测试套件 */
+adminApp.post('/_admin/testsuites', (req, res) => {
+  saveTestSuites(req.body);
+  res.json({ success: true });
+});
+
+/** POST /_admin/testsuite/save - 创建/更新测试套件 */
+adminApp.post('/_admin/testsuite/save', (req, res) => {
+  const suite = req.body;
+  const suites = getTestSuites();
+  const idx = suites.findIndex(s => s.id === suite.id);
+  if (idx !== -1) {
+    suites[idx] = { ...suites[idx], ...suite, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    suites.push({ ...suite, id: now, createdAt: now, updatedAt: now });
+  }
+  saveTestSuites(suites);
+  res.json({ success: true, data: suites });
+});
+
+/** POST /_admin/testsuite/delete - 删除测试套件 */
+adminApp.post('/_admin/testsuite/delete', (req, res) => {
+  const { id } = req.body;
+  const suites = getTestSuites().filter(s => s.id !== id);
+  saveTestSuites(suites);
+  res.json({ success: true, data: suites });
+});
+
 /** GET /_admin/projects - 获取所有项目 */
 adminApp.get('/_admin/projects', (req, res) => {
   res.json(getProjects());
@@ -491,6 +1351,88 @@ adminApp.post('/_admin/project/delete', (req, res) => {
   if (changed) saveGroups(groups);
 
   res.json({ success: true, data: projects });
+});
+
+/* ==================== MockService Admin API（新架构） ==================== */
+
+/** GET /_admin/services - 获取所有 MockService */
+adminApp.get('/_admin/services', (req, res) => {
+  res.json(getMockServices());
+});
+
+/** POST /_admin/services - 全量保存 MockService */
+adminApp.post('/_admin/services', (req, res) => {
+  saveMockServices(req.body);
+  res.json({ success: true });
+});
+
+/** POST /_admin/service/save - 保存单个 MockService（有 ID 则更新，无 ID 则新增） */
+adminApp.post('/_admin/service/save', (req, res) => {
+  const service = req.body;
+  if (!service.name) {
+    return res.status(400).json({ error: 'Service name is required' });
+  }
+  const services = getMockServices();
+  const idx = services.findIndex(s => s.id === service.id);
+  if (idx !== -1) {
+    services[idx] = { ...services[idx], ...service, id: services[idx].id, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    services.push({ ...service, id: now, groups: service.groups || [], createdAt: now, updatedAt: now });
+  }
+  saveMockServices(services);
+  res.json({ success: true, data: services });
+});
+
+/** POST /_admin/service/delete - 删除 MockService */
+adminApp.post('/_admin/service/delete', (req, res) => {
+  const { id } = req.body;
+  stopServiceServer(id); // 自动停止运行中的服务
+  const services = getMockServices().filter(s => s.id !== id);
+  saveMockServices(services);
+  res.json({ success: true, data: services });
+});
+
+/** POST /_admin/service/start - 启动 MockService 的服务 */
+adminApp.post('/_admin/service/start', async (req, res) => {
+  try {
+    const { serviceId, groupId, port, prefix } = req.body;
+    // 兼容新旧架构：优先使用 serviceId，回退到 groupId
+    if (serviceId) {
+      res.json(await startServiceServer(serviceId, parseInt(port), prefix || ''));
+    } else if (groupId) {
+      res.json(await startGroupServer(groupId, parseInt(port), prefix || ''));
+    } else {
+      res.status(400).json({ error: 'serviceId or groupId is required' });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /_admin/service/stop - 停止 MockService 的服务 */
+adminApp.post('/_admin/service/stop', (req, res) => {
+  const { serviceId, groupId } = req.body;
+  if (serviceId) {
+    stopServiceServer(serviceId);
+  } else if (groupId) {
+    stopGroupServer(groupId);
+  }
+  res.json({ success: true });
+});
+
+/** GET /_admin/service/status - 获取所有运行中服务的状态（合并新旧架构） */
+adminApp.get('/_admin/service/status', (req, res) => {
+  const status = {};
+  // 旧架构的 group 级别服务
+  for (const [gid, info] of runningServices) {
+    status[`group_${gid}`] = { running: true, port: info.port, prefix: info.prefix, type: 'group' };
+  }
+  // 新架构的 service 级别服务
+  for (const [sid, info] of runningServiceServers) {
+    status[sid] = { running: true, port: info.port, prefix: info.prefix, type: 'service' };
+  }
+  res.json(status);
 });
 
 /* ==================== WebSocket Mock 服务管理 ==================== */
@@ -957,5 +1899,7 @@ adminApp.post('/_admin/ws/server/:id/disconnect', (req, res) => {
 /** 启动 Admin 管理服务器，监听所有网络接口 */
 const server = adminApp.listen(ADMIN_PORT, '0.0.0.0', () => {
   console.log(`Admin running: http://${LOCAL_IP}:${ADMIN_PORT}`);
+  // 执行数据迁移（旧 MockGroup → 新 MockService）
+  try { migrateGroupsToServices(); } catch (e) { console.error('[Migration] Error:', e); }
 });
 server.on('error', (e) => console.error(e));

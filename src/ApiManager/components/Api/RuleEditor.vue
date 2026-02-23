@@ -12,8 +12,8 @@
  */
 <script setup lang="ts">
 import { computed, inject, ref, watch, onMounted } from 'vue';
-import { Check, VideoPlay, CopyDocument, Plus, Delete, Document, ArrowDown, ArrowRight, FolderOpened, Close, Download, DocumentCopy, MagicStick } from '@element-plus/icons-vue';
-import type { MockRule, KeyValueItem, MockTemplate, ServiceConfig, TestResultFile, TestResultMeta } from '@/types/mock';
+import { Check, VideoPlay, CopyDocument, Plus, Delete, Document, ArrowDown, ArrowRight, FolderOpened, Close, Download, DocumentCopy, MagicStick, Warning, CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue';
+import type { MockRule, KeyValueItem, MockTemplate, MockService, MockServiceGroup, TestResultFile, TestResultMeta, MockExpectation, ExpectationCondition, ConditionSource, ConditionOperator, ResponseAssertion, AssertionTarget, AssertionResult } from '@/types/mock';
 import CodeEditor from '@/ApiManager/components/CodeEditor.vue'; // 引入 CodeMirror 封装组件
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { generateDataTemplate, buildAdvancedTemplate, detectInputType, extractTsInterfaceNames } from '@/utils/generateDataTemplate';
@@ -25,7 +25,8 @@ import { generateDataTemplate, buildAdvancedTemplate, detectInputType, extractTs
  * @property {TestResultFile | null} testResultFile - 接口调试的文件响应结果（二进制类型时使用）
  * @property {TestResultMeta | null} testResultMeta - 接口调试的请求元信息（状态码、耗时、响应头等）
  * @property {boolean} hasSelection - 是否已选中某个接口（未选中时显示空状态）
- * @property {ServiceConfig} groupConfig - 所属分组的服务配置（端口、前缀、真实接口地址等）
+ * @property {MockService} service - 所属服务配置（端口、前缀、真实接口地址等）
+ * @property {MockServiceGroup} group - 所属分组（子前缀等）
  * @property {string} localIp - 本机 IP 地址，用于拼接 Mock 地址
  */
 const props = defineProps<{
@@ -34,7 +35,8 @@ const props = defineProps<{
   testResultFile?: TestResultFile | null;
   testResultMeta?: TestResultMeta | null;
   hasSelection: boolean;
-  groupConfig?: ServiceConfig;
+  service?: MockService | null;
+  group?: MockServiceGroup | null;
   localIp?: string;
   groupName?: string;       // 所属分组名称（面包屑用）
   isTesting?: boolean;      // 是否正在请求中
@@ -52,6 +54,7 @@ const emit = defineEmits<{
   (e: 'save'): void;
   (e: 'copy'): void;
   (e: 'test', mode: 'mock' | 'real'): void;
+  (e: 'save-testcase', testcase: any): void;
 }>();
 
 // 【关键】注入全局的深色模式状态 (由 index.vue 提供)
@@ -202,12 +205,16 @@ const removeRow = (list: KeyValueItem[], idx: number) => list.splice(idx, 1);
  */
 // --- Mock 地址计算 ---
 const mockUrlPrefix = computed(() => {
-  const cfg = props.groupConfig;
+  const svc = props.service;
   const ip = props.localIp || 'localhost';
-  const port = cfg?.port || 3888;
-  let prefix = cfg?.prefix || '';
-  if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
-  return `http://${ip}:${port}${prefix}`;
+  const port = svc?.port || 3888;
+  let servicePrefix = svc?.prefix || '';
+  if (servicePrefix && !servicePrefix.startsWith('/')) servicePrefix = '/' + servicePrefix;
+  if (servicePrefix && servicePrefix.endsWith('/')) servicePrefix = servicePrefix.slice(0, -1);
+  let groupPrefix = props.group?.subPrefix || '';
+  if (groupPrefix && !groupPrefix.startsWith('/')) groupPrefix = '/' + groupPrefix;
+  if (groupPrefix && groupPrefix.endsWith('/')) groupPrefix = groupPrefix.slice(0, -1);
+  return `http://${ip}:${port}${servicePrefix}${groupPrefix}`;
 });
 
 /**
@@ -220,29 +227,29 @@ const mockUrlFull = computed(() => {
   return mockUrlPrefix.value + path;
 });
 
-// --- 真实地址计算（接口级别覆盖分组配置）---
+// --- 真实地址计算（接口级别覆盖服务配置）---
 // 以下五个 computed 属性分别对应真实接口地址的各个组成部分。
-// 每个字段优先读取接口级别的 realConfig，若未设置则回退到分组级别的 groupConfig。
-// 写入时只修改接口级别的 realConfig，不影响分组配置。
+// 每个字段优先读取接口级别的 realConfig，若未设置则回退到服务级别的 service 配置。
+// 写入时只修改接口级别的 realConfig，不影响服务配置。
 
-/** 真实接口协议（http / https），接口级覆盖分组配置 */
+/** 真实接口协议（http / https），接口级覆盖服务配置 */
 const realProtocol = computed({
-  get: () => rule.value.realConfig?.protocol || props.groupConfig?.realProtocol || 'http',
+  get: () => rule.value.realConfig?.protocol || props.service?.realProtocol || 'http',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.protocol = v; }
 });
-/** 真实接口主机地址，接口级覆盖分组配置 */
+/** 真实接口主机地址，接口级覆盖服务配置 */
 const realHost = computed({
-  get: () => rule.value.realConfig?.host || props.groupConfig?.realHost || '',
+  get: () => rule.value.realConfig?.host || props.service?.realHost || '',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.host = v; }
 });
-/** 真实接口端口号，接口级覆盖分组配置 */
+/** 真实接口端口号，接口级覆盖服务配置 */
 const realPort = computed({
-  get: () => rule.value.realConfig?.port || props.groupConfig?.realPort || '',
+  get: () => rule.value.realConfig?.port || props.service?.realPort || '',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.port = v; }
 });
-/** 真实接口路径前缀，接口级覆盖分组配置 */
+/** 真实接口路径前缀，接口级覆盖服务配置 */
 const realPrefix = computed({
-  get: () => rule.value.realConfig?.prefix ?? props.groupConfig?.realPrefix ?? '',
+  get: () => rule.value.realConfig?.prefix ?? props.service?.realPrefix ?? '',
   set: (v: string) => { if (rule.value.realConfig) rule.value.realConfig.prefix = v; }
 });
 /** 真实接口路径，默认回退到 Mock 的 URL 路径 */
@@ -262,6 +269,7 @@ const realUrlFull = computed(() => {
   if (realPort.value) url += `:${realPort.value}`;
   let prefix = realPrefix.value;
   if (prefix && !prefix.startsWith('/')) prefix = '/' + prefix;
+  if (prefix && prefix.endsWith('/')) prefix = prefix.slice(0, -1);
   url += prefix;
   let path = realPath.value;
   if (path && !path.startsWith('/')) path = '/' + path;
@@ -569,6 +577,234 @@ const handleApplyGenerated = () => {
   ElMessage.success('已生成并填入 dataTemplate');
 };
 
+// --- 路径参数检测 ---
+/** 从 URL 中提取路径参数名称列表（如 /users/:id -> ['id']） */
+const detectedPathParams = computed(() => {
+  const url = rule.value.url || '';
+  const matches = url.match(/:([a-zA-Z_]\w*)/g);
+  if (!matches) return [];
+  return matches.map(m => m.slice(1));
+});
+
+// --- 条件响应（Mock 期望）---
+/** 条件来源选项 */
+const conditionSources: { label: string; value: ConditionSource }[] = [
+  { label: 'Query 参数', value: 'query' },
+  { label: 'Header', value: 'header' },
+  { label: 'Body (JSON path)', value: 'body' },
+  { label: '路径参数', value: 'pathParam' },
+];
+/** 条件操作符选项 */
+const conditionOperators: { label: string; value: ConditionOperator }[] = [
+  { label: '等于', value: 'equals' },
+  { label: '包含', value: 'contains' },
+  { label: '正则', value: 'regex' },
+  { label: '存在', value: 'exists' },
+  { label: '大于', value: 'gt' },
+  { label: '小于', value: 'lt' },
+];
+
+/** 新增期望 */
+const addExpectation = () => {
+  if (!rule.value.expectations) rule.value.expectations = [];
+  const newExp: MockExpectation = {
+    id: Date.now(),
+    name: `期望 ${rule.value.expectations.length + 1}`,
+    conditions: [{ source: 'query', key: '', operator: 'equals', value: '' }],
+    statusCode: 200,
+    responseMode: 'basic',
+    responseType: 'application/json',
+    responseBasic: '{}',
+    responseAdvanced: '',
+  };
+  rule.value.expectations.push(newExp);
+};
+
+/** 删除期望 */
+const removeExpectation = (idx: number) => {
+  rule.value.expectations?.splice(idx, 1);
+};
+
+/** 为期望添加条件 */
+const addCondition = (exp: MockExpectation) => {
+  exp.conditions.push({ source: 'query', key: '', operator: 'equals', value: '' });
+};
+
+/** 删除期望中的条件 */
+const removeCondition = (exp: MockExpectation, idx: number) => {
+  exp.conditions.splice(idx, 1);
+};
+
+// --- 响应断言 ---
+/** 断言目标选项 */
+const assertionTargets: { label: string; value: AssertionTarget }[] = [
+  { label: '状态码', value: 'status' },
+  { label: '响应体', value: 'body' },
+  { label: '响应头', value: 'header' },
+  { label: '响应时间', value: 'responseTime' },
+];
+
+/** 新增断言 */
+const addAssertion = () => {
+  if (!rule.value.assertions) rule.value.assertions = [];
+  rule.value.assertions.push({
+    id: Date.now(),
+    target: 'status',
+    operator: 'equals',
+    value: '200',
+  });
+};
+
+/** 删除断言 */
+const removeAssertion = (idx: number) => {
+  rule.value.assertions?.splice(idx, 1);
+};
+
+/** 断言执行结果 */
+const assertionResults = ref<AssertionResult[]>([]);
+
+/** 评估断言（在测试完成后由父组件触发） */
+const evaluateAssertions = () => {
+  if (!rule.value.assertions?.length || !props.testResultMeta) {
+    assertionResults.value = [];
+    return;
+  }
+  const meta = props.testResultMeta;
+  const results: AssertionResult[] = [];
+
+  for (const assertion of rule.value.assertions) {
+    let actual = '';
+    switch (assertion.target) {
+      case 'status':
+        actual = String(meta.status);
+        break;
+      case 'body':
+        actual = assertion.key ? getByPath(props.testResult, assertion.key) : props.testResult;
+        break;
+      case 'header':
+        actual = assertion.key ? (meta.headers[assertion.key.toLowerCase()] || '') : '';
+        break;
+      case 'responseTime':
+        actual = String(meta.time);
+        break;
+    }
+
+    const passed = evaluateConditionFrontend(actual, assertion.operator, assertion.value);
+    results.push({
+      assertion,
+      passed,
+      actual: String(actual),
+      message: passed ? '通过' : `期望 ${assertion.operator} ${assertion.value}，实际为 ${actual}`,
+    });
+  }
+  assertionResults.value = results;
+};
+
+/** 前端条件评估 */
+function evaluateConditionFrontend(actual: string, operator: string, expected: string): boolean {
+  switch (operator) {
+    case 'equals': return actual === expected;
+    case 'contains': return actual.includes(expected);
+    case 'regex': try { return new RegExp(expected).test(actual); } catch { return false; }
+    case 'exists': return actual !== '' && actual !== 'undefined' && actual !== 'null';
+    case 'gt': return Number(actual) > Number(expected);
+    case 'lt': return Number(actual) < Number(expected);
+    default: return false;
+  }
+}
+
+/** 从 JSON 字符串中按路径取值 */
+function getByPath(jsonStr: string, path: string): string {
+  try {
+    let obj = JSON.parse(jsonStr);
+    for (const key of path.split('.')) {
+      if (obj == null) return '';
+      obj = obj[key];
+    }
+    return obj == null ? '' : String(obj);
+  } catch {
+    return '';
+  }
+}
+
+/** 保存为测试用例 */
+const saveAsTestCase = () => {
+  if (!rule.value.id || !rule.value.url) return;
+  const testcase = {
+    id: Date.now(),
+    name: `${rule.value.name || rule.value.url} 测试`,
+    ruleId: rule.value.id,
+    groupId: 0, // 由父组件填充
+    method: rule.value.method || 'GET',
+    url: rule.value.url,
+    headers: JSON.parse(JSON.stringify(rule.value.headers || [])),
+    params: JSON.parse(JSON.stringify(rule.value.params || [])),
+    body: JSON.parse(JSON.stringify(rule.value.body || { type: 'none', raw: '', formData: [] })),
+    assertions: JSON.parse(JSON.stringify(rule.value.assertions || [])),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  emit('save-testcase', testcase);
+};
+
+/** 监听测试结果变化，自动执行断言 */
+watch(() => props.testResultMeta, () => {
+  if (props.testResultMeta) evaluateAssertions();
+});
+
+// --- URL Query 参数双向同步 ---
+const urlInitialized = ref(false);
+let urlSyncTimer: ReturnType<typeof setTimeout> | null = null;
+// 记录从 URL 中同步过来的 key，手动添加的参数不受影响
+const urlSyncedKeys = ref<Set<string>>(new Set());
+
+watch(() => props.modelValue.id, () => {
+  urlInitialized.value = false;
+  urlSyncedKeys.value = new Set();
+  if (urlSyncTimer) { clearTimeout(urlSyncTimer); urlSyncTimer = null; }
+  setTimeout(() => { urlInitialized.value = true; }, 100);
+}, { immediate: true });
+
+watch(() => rule.value.url, () => {
+  if (!urlInitialized.value) return;
+
+  if (urlSyncTimer) clearTimeout(urlSyncTimer);
+  urlSyncTimer = setTimeout(() => {
+    const currentUrl = rule.value.url;
+    if (!rule.value.params) rule.value.params = [];
+
+    // 解析当前 URL 中的 query 参数
+    const urlParams = new Map<string, string>();
+    if (currentUrl && currentUrl.includes('?')) {
+      const queryStr = currentUrl.slice(currentUrl.indexOf('?') + 1);
+      for (const pair of queryStr.split('&').filter(Boolean)) {
+        if (!pair.includes('=')) continue;
+        const [key, ...rest] = pair.split('=');
+        if (key) urlParams.set(decodeURIComponent(key), decodeURIComponent(rest.join('=')));
+      }
+    }
+
+    // 删除：之前从 URL 同步的 key 但现在 URL 里已经没有了
+    const prevSynced = urlSyncedKeys.value;
+    rule.value.params = rule.value.params.filter(p =>
+      !prevSynced.has(p.key) || urlParams.has(p.key)
+    );
+
+    // 新增或更新
+    for (const [key, value] of urlParams) {
+      const existing = rule.value.params.find(p => p.key === key);
+      if (existing) {
+        existing.value = value;
+      } else {
+        rule.value.params.push({ key, value, required: false });
+      }
+    }
+
+    // 更新同步记录
+    urlSyncedKeys.value = new Set(urlParams.keys());
+  }, 600);
+});
+
 onMounted(() => {
   loadTemplates(); // 加载模板
 }); // 加载模板
@@ -611,33 +847,29 @@ onMounted(() => {
 
         <!-- ========== Tab 1: 接口定义面板 ========== -->
         <div v-show="mainTab === 'interface'" class="interface-panel">
-          <!-- 接口名称 + Mock 地址区 -->
-          <div class="addr-section">
-            <div class="addr-row">
-              <span class="addr-tag name">名称</span>
-              <el-input v-model="rule.name" placeholder="接口名称（选填）" class="url-input" />
-            </div>
-          </div>
-
-          <!-- Mock 地址区 -->
-          <div class="addr-section">
-            <div class="addr-row">
-              <span class="addr-tag mock">Mock</span>
+          <!-- 接口定义头部：统一区域 -->
+          <div class="interface-header">
+            <!-- 第一行：方法 + 名称 + 保存按钮 -->
+            <div class="header-row">
               <el-select v-model="rule.method" style="width: 90px" size="default">
                 <el-option value="GET" /><el-option value="POST" /><el-option value="PUT" /><el-option value="DELETE" />
               </el-select>
+              <el-input v-model="rule.name" placeholder="接口名称（选填）" class="url-input" />
+              <el-button :type="saveSuccess ? 'info' : 'success'" :icon="Check" @click="handleSave">{{ saveSuccess ? '已保存 ✓' : '保存' }}</el-button>
+            </div>
+            <!-- 第二行：Mock 路径 -->
+            <div class="header-row">
+              <span class="addr-tag mock">Mock</span>
               <el-input v-model="rule.url" placeholder="/api/path" class="url-input" />
               <el-button type="primary" plain :icon="CopyDocument" @click="$emit('copy')" title="复制Mock地址" />
             </div>
+            <!-- Mock URL 预览 -->
             <div v-if="rule.url" class="addr-url-preview" @click="$emit('copy')" title="点击复制完整地址">
-              {{ mockUrlFull }}
+              → {{ mockUrlFull }}
             </div>
-          </div>
-
-          <!-- 真实地址区 -->
-          <div class="addr-section">
-            <div class="addr-row">
-              <span class="addr-tag real">真实</span>
+            <!-- 第三行：Real 路径 + 操作按钮 -->
+            <div class="header-row">
+              <span class="addr-tag real">Real</span>
               <el-input v-model="realPath" placeholder="/api/path" class="url-input" />
               <el-button plain :icon="CopyDocument" @click="handleCopyRealUrl" title="复制真实地址" />
               <el-button plain :icon="DocumentCopy" @click="handlePasteRealUrl" title="粘贴并解析URL" />
@@ -645,6 +877,7 @@ onMounted(() => {
                 <el-icon :size="14"><component :is="showRealDetail ? ArrowDown : ArrowRight" /></el-icon>
               </el-button>
             </div>
+            <!-- Real 详细配置（条件展开） -->
             <div v-if="showRealDetail" class="addr-detail-row">
               <el-select v-model="realProtocol" style="width: 78px" size="small">
                 <el-option label="http" value="http" />
@@ -657,18 +890,30 @@ onMounted(() => {
               <span class="addr-sep">/</span>
               <el-input v-model="realPrefix" placeholder="前缀" size="small" style="flex: 1; min-width: 60px" />
             </div>
+            <!-- Real URL 预览 -->
             <div v-if="realUrlFull" class="addr-url-preview" @click="handleCopyRealUrl" title="点击复制完整地址">
-              {{ realUrlFull }}
+              → {{ realUrlFull }}
             </div>
-          </div>
-
-          <!-- 操作栏：保存按钮 + 时间信息 -->
-          <div class="addr-actions">
-            <div v-if="rule.createdAt || rule.updatedAt" class="time-info">
-              <span v-if="rule.createdAt" title="创建时间">创建: {{ formatTime(rule.createdAt) }}</span>
-              <span v-if="rule.updatedAt" title="更新时间">更新: {{ formatTime(rule.updatedAt) }}</span>
+            <!-- 路径参数标签 -->
+            <div v-if="detectedPathParams.length" class="path-params-tags">
+              <span class="path-params-label">路径参数：</span>
+              <el-tag v-for="p in detectedPathParams" :key="p" size="small" type="info" effect="plain">:{{ p }}</el-tag>
             </div>
-            <el-button :type="saveSuccess ? 'info' : 'success'" :icon="Check" @click="handleSave">{{ saveSuccess ? '已保存 ✓' : '保存' }}</el-button>
+            <!-- 配置行（虚线分隔） -->
+            <div class="header-config-row">
+              <div class="config-item">
+                <span class="config-label">延迟:</span>
+                <el-input-number v-model="rule.delay" :min="0" :max="30000" :step="100" size="small" controls-position="right" style="width: 100px" />
+                <span class="config-sep">~</span>
+                <el-input-number v-model="rule.delayMax" :min="0" :max="30000" :step="100" size="small" controls-position="right" style="width: 100px" placeholder="最大值" />
+                <el-tooltip content="设置最大值后，延迟将在 [最小值, 最大值] 范围内随机" placement="top">
+                  <el-icon style="color: var(--text-secondary); cursor: help; margin-left: 2px"><Warning /></el-icon>
+                </el-tooltip>
+              </div>
+              <div v-if="rule.createdAt || rule.updatedAt" class="time-info">
+                <span v-if="rule.updatedAt" title="更新时间">更新: {{ formatTime(rule.updatedAt) }}</span>
+              </div>
+            </div>
           </div>
 
           <!-- 接口定义子 Tab：请求头 / 请求参数 / 请求体 / 响应头 -->
@@ -743,6 +988,59 @@ onMounted(() => {
                 <el-button link type="primary" :icon="Plus" @click="addRow(rule.responseHeaders!)">添加响应头</el-button>
               </div>
             </el-tab-pane>
+
+            <!-- 子 Tab: 条件响应 -->
+            <el-tab-pane name="expectations">
+              <template #label>
+                条件响应
+                <el-badge v-if="rule.expectations?.length" :value="rule.expectations.length" type="info" class="exp-badge" />
+              </template>
+              <div class="expectations-editor">
+                <div v-for="(exp, expIdx) in rule.expectations" :key="exp.id" class="exp-card">
+                  <div class="exp-header">
+                    <el-input v-model="exp.name" size="small" style="width: 160px" placeholder="期望名称" />
+                    <el-tag size="small" type="info">{{ exp.conditions.length }} 个条件</el-tag>
+                    <div class="exp-response-config">
+                      <el-select v-model="exp.statusCode" size="small" style="width: 90px">
+                        <el-option :value="200" label="200" /><el-option :value="201" label="201" />
+                        <el-option :value="400" label="400" /><el-option :value="401" label="401" />
+                        <el-option :value="403" label="403" /><el-option :value="404" label="404" />
+                        <el-option :value="500" label="500" />
+                      </el-select>
+                      <el-select v-model="exp.responseMode" size="small" style="width: 100px">
+                        <el-option value="basic" label="基础模式" /><el-option value="advanced" label="高级模式" />
+                      </el-select>
+                    </div>
+                    <el-button :icon="Delete" circle plain type="danger" size="small" @click="removeExpectation(expIdx)" />
+                  </div>
+
+                  <!-- 条件列表 -->
+                  <div v-for="(cond, condIdx) in exp.conditions" :key="condIdx" class="cond-row">
+                    <el-select v-model="cond.source" size="small" style="width: 110px">
+                      <el-option v-for="s in conditionSources" :key="s.value" :label="s.label" :value="s.value" />
+                    </el-select>
+                    <el-input v-model="cond.key" size="small" placeholder="参数名" style="width: 120px" />
+                    <el-select v-model="cond.operator" size="small" style="width: 80px">
+                      <el-option v-for="op in conditionOperators" :key="op.value" :label="op.label" :value="op.value" />
+                    </el-select>
+                    <el-input v-model="cond.value" size="small" placeholder="值" style="flex: 1" :disabled="cond.operator === 'exists'" />
+                    <el-button :icon="Delete" circle plain type="danger" size="small" @click="removeCondition(exp, condIdx)" />
+                  </div>
+                  <el-button link type="primary" size="small" :icon="Plus" @click="addCondition(exp)">添加条件</el-button>
+
+                  <!-- 期望响应内容（折叠） -->
+                  <div class="exp-response">
+                    <el-input v-if="exp.responseMode === 'basic'" v-model="exp.responseBasic" type="textarea" :rows="3" placeholder='响应内容（JSON）' />
+                    <el-input v-else v-model="exp.responseAdvanced" type="textarea" :rows="3" placeholder='高级模式脚本' />
+                  </div>
+                </div>
+
+                <el-button type="primary" plain :icon="Plus" @click="addExpectation" style="margin-top: 8px">添加条件响应</el-button>
+                <div v-if="!rule.expectations?.length" class="empty-tip" style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 13px">
+                  暂无条件响应。添加后，当请求满足条件时将返回对应的响应数据，优先级高于默认响应和场景预设。
+                </div>
+              </div>
+            </el-tab-pane>
           </el-tabs>
         </div>
 
@@ -759,7 +1057,7 @@ onMounted(() => {
               </el-radio-group>
             </div>
 
-            <!-- 基础模式下的响应类型（Content-Type）选择器 -->
+            <!-- 基础模式下的响应类型（Content-Type）选择器 + Mock.js 开关 -->
             <div v-if="rule.responseMode === 'basic'" class="type-select">
               <span class="label">响应类型：</span>
               <el-select v-model="rule.responseType" style="width: 180px" filterable>
@@ -767,6 +1065,9 @@ onMounted(() => {
                   <el-option v-for="t in contentTypes.filter(c => c.group === group)" :key="t.value" :label="t.label" :value="t.value" />
                 </el-option-group>
               </el-select>
+              <el-tooltip content="启用后，JSON 响应将通过 Mock.js 处理，支持 @cname、@email 等语法" placement="top">
+                <el-checkbox v-model="rule.mockjsEnabled" label="Mock.js" size="small" border />
+              </el-tooltip>
             </div>
 
             <div class="template-actions">
@@ -844,6 +1145,7 @@ onMounted(() => {
               <div class="test-actions">
                 <el-button type="primary" size="small" :icon="VideoPlay" @click="$emit('test', 'mock')" :loading="isTesting">{{ isTesting ? '请求中...' : '请求Mock' }}</el-button>
                 <el-button type="warning" size="small" :icon="VideoPlay" @click="$emit('test', 'real')" :disabled="!realUrlFull || isTesting" :loading="isTesting">{{ isTesting ? '请求中...' : '请求真实接口' }}</el-button>
+                <el-button type="info" size="small" plain @click="saveAsTestCase" title="保存当前接口配置为测试用例">保存为用例</el-button>
               </div>
             </div>
 
@@ -881,6 +1183,42 @@ onMounted(() => {
               <span class="file-download-size">{{ (testResultFile.size / 1024).toFixed(1) }} KB</span>
               <el-button v-if="testResultFile.blobUrl" type="primary" size="small" :icon="Download" @click="handleDownloadFile">下载文件</el-button>
               <span v-else class="file-download-hint">请重新请求以下载</span>
+            </div>
+
+            <!-- 断言区域 -->
+            <div v-if="rule.assertions?.length" class="assertions-section">
+              <div class="assertions-header">
+                <span>响应断言</span>
+                <span v-if="assertionResults.length" class="assertions-summary">
+                  <span class="passed">{{ assertionResults.filter(r => r.passed).length }} 通过</span>
+                  <span v-if="assertionResults.some(r => !r.passed)" class="failed">{{ assertionResults.filter(r => !r.passed).length }} 失败</span>
+                </span>
+              </div>
+              <div v-for="(result, idx) in assertionResults" :key="idx" class="assertion-result-row" :class="{ passed: result.passed, failed: !result.passed }">
+                <el-icon v-if="result.passed" color="#67C23A"><CircleCheckFilled /></el-icon>
+                <el-icon v-else color="#F56C6C"><CircleCloseFilled /></el-icon>
+                <span class="assertion-desc">{{ assertionTargets.find(t => t.value === result.assertion.target)?.label }}{{ result.assertion.key ? ` [${result.assertion.key}]` : '' }} {{ conditionOperators.find(o => o.value === result.assertion.operator)?.label }} {{ result.assertion.value }}</span>
+                <span class="assertion-actual">实际: {{ result.actual }}</span>
+              </div>
+            </div>
+
+            <!-- 断言配置 -->
+            <div class="assertions-config">
+              <div class="assertions-config-header">
+                <span>断言规则</span>
+                <el-button type="primary" plain size="small" :icon="Plus" @click="addAssertion">添加断言</el-button>
+              </div>
+              <div v-for="(a, idx) in rule.assertions" :key="a.id" class="assertion-row">
+                <el-select v-model="a.target" size="small" style="width: 100px">
+                  <el-option v-for="t in assertionTargets" :key="t.value" :label="t.label" :value="t.value" />
+                </el-select>
+                <el-input v-if="a.target === 'header' || a.target === 'body'" v-model="a.key" size="small" placeholder="key / path" style="width: 120px" />
+                <el-select v-model="a.operator" size="small" style="width: 80px">
+                  <el-option v-for="op in conditionOperators" :key="op.value" :label="op.label" :value="op.value" />
+                </el-select>
+                <el-input v-model="a.value" size="small" placeholder="期望值" style="flex: 1" :disabled="a.operator === 'exists'" />
+                <el-button :icon="Delete" circle plain type="danger" size="small" @click="removeAssertion(idx)" />
+              </div>
             </div>
 
             <!-- 响应数据 -->
@@ -983,24 +1321,25 @@ interface User {
 /* 接口面板 */
 .interface-panel { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
-/* 地址区块：包裹输入行 + 预览行 */
-.addr-section {
+/* 统一接口头部区域 */
+.interface-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-hover);
 }
-/* 地址输入行 */
-.addr-row {
-  padding: 6px 10px; display: flex; gap: 4px; align-items: center;
+.header-row {
+  display: flex; gap: 4px; align-items: center;
 }
 .addr-tag {
   padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; white-space: nowrap;
 }
-.addr-tag.name { background: #ecf5ff; color: #409EFF; }
 .addr-tag.mock { background: #e1f3d8; color: #67C23A; }
 .addr-tag.real { background: #fdf6ec; color: #E6A23C; }
 /* 完整地址预览行 */
 .addr-url-preview {
-  padding: 0 10px 6px 20px;
+  padding: 0 0 0 10px;
   font-size: 11px;
   font-family: 'Courier New', Courier, monospace;
   color: var(--text-secondary);
@@ -1013,14 +1352,22 @@ interface User {
 .addr-url-preview:hover { color: var(--primary-color); }
 /* 真实地址展开配置行 */
 .addr-detail-row {
-  padding: 2px 10px 6px 20px;
+  padding: 0 0 0 10px;
   display: flex;
   gap: 4px;
   align-items: center;
 }
 .addr-sep { color: var(--text-secondary); font-size: 13px; font-family: monospace; flex-shrink: 0; }
-.addr-actions { padding: 4px 10px; display: flex; justify-content: flex-end; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); }
 .url-input { flex: 1; }
+/* 配置行（虚线分隔） */
+.header-config-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border-color);
+  flex-wrap: wrap;
+}
 .sub-tabs { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 :deep(.el-tabs__header) { margin: 0; padding: 0 12px; }
 :deep(.el-tabs__content) { flex: 1; overflow: auto; padding: 12px; }
@@ -1189,5 +1536,123 @@ interface User {
   margin-top: 6px;
   font-size: 12px;
   color: #F56C6C;
+}
+
+/* 路径参数标签 */
+.path-params-tags {
+  padding: 2px 10px 6px 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.path-params-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* 配置项 */
+.config-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.config-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.config-sep {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0 2px;
+}
+
+/* 条件响应编辑器 */
+.expectations-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.exp-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-hover);
+}
+.exp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.exp-response-config {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.cond-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.exp-response {
+  margin-top: 4px;
+}
+.exp-badge {
+  margin-left: 4px;
+}
+
+/* 断言区域 */
+.assertions-section {
+  border-bottom: 1px solid var(--border-color);
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+.assertions-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.assertions-summary .passed { color: #67C23A; font-size: 12px; }
+.assertions-summary .failed { color: #F56C6C; font-size: 12px; margin-left: 8px; }
+.assertion-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.assertion-result-row.passed { color: #67C23A; }
+.assertion-result-row.failed { color: #F56C6C; }
+.assertion-desc { flex: 1; color: var(--text-primary); }
+.assertion-actual { color: var(--text-secondary); font-family: monospace; font-size: 11px; }
+
+/* 断言配置 */
+.assertions-config {
+  border-bottom: 1px solid var(--border-color);
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+.assertions-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.assertion-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
 }
 </style>

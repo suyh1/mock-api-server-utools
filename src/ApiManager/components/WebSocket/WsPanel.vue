@@ -240,7 +240,9 @@ const welcomeMessage = computed({
     <div class="ws-sidebar">
       <div class="sidebar-header">
         <span class="sidebar-title">WS 服务</span>
-        <el-button :icon="Plus" size="small" circle @click="addServer" />
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <el-button :icon="Plus" size="small" circle @click="addServer" />
+        </div>
       </div>
       <div class="server-list">
         <div
@@ -422,106 +424,6 @@ const welcomeMessage = computed({
               </el-select>
               <el-input v-model="sendMessage" size="small" placeholder="输入消息..." @keyup.enter="sendManualMessage" class="send-input" />
               <el-button size="small" type="primary" :icon="Promotion" @click="sendManualMessage" :disabled="!sendMessage || !isRunning">发送</el-button>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <!-- Tab 5: 使用指南 -->
-        <el-tab-pane label="使用指南" name="guide">
-          <template #label><el-icon><QuestionFilled /></el-icon>&nbsp;指南</template>
-          <div class="tab-content guide-tab">
-            <div class="guide-content">
-              <h3>🚀 快速开始</h3>
-              <ol>
-                <li>在左侧选择内置的「💬 示例聊天服务」（首次使用已自动创建）</li>
-                <li>在「配置」Tab 中点击「启动服务」按钮</li>
-                <li>打开浏览器 DevTools → Console，粘贴以下代码连接：</li>
-              </ol>
-              <pre class="guide-code">// 1. 建立连接
-const ws = new WebSocket('ws://localhost:8088/ws');
-
-// 2. 监听消息
-ws.onopen = () => console.log('✅ 已连接');
-ws.onmessage = (e) => console.log('📩 收到:', e.data);
-ws.onclose = () => console.log('❌ 已断开');
-
-// 3. 发送测试消息（连接成功后执行）
-ws.send('ping');                    // → 收到: pong
-ws.send('hello world');             // → 收到: 打招呼响应
-ws.send(JSON.stringify({            // → 收到: Mock 随机用户数据
-  type: 'user.info'
-}));
-ws.send(JSON.stringify({            // → 收到: 聊天回复
-  type: 'chat.send',
-  content: '你好呀'
-}));
-ws.send('其他任意消息');              // → 收到: 默认回复</pre>
-
-              <h3>📋 内置示例规则说明</h3>
-              <table class="guide-table">
-                <thead>
-                  <tr><th>规则名称</th><th>匹配类型</th><th>匹配模式</th><th>说明</th></tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>心跳检测</td>
-                    <td><el-tag size="small">精确匹配</el-tag></td>
-                    <td><code>ping</code></td>
-                    <td>消息必须完全等于 "ping"，回复 "pong"。常用于心跳保活场景。</td>
-                  </tr>
-                  <tr>
-                    <td>打招呼</td>
-                    <td><el-tag size="small" type="success">包含匹配</el-tag></td>
-                    <td><code>hello</code></td>
-                    <td>消息中包含 "hello" 即匹配，延迟 200ms 回复。如 "hello world"、"say hello" 都能命中。</td>
-                  </tr>
-                  <tr>
-                    <td>JSON 消息</td>
-                    <td><el-tag size="small" type="warning">正则匹配</el-tag></td>
-                    <td><code>^\{.*"type"\s*:.*\}$</code></td>
-                    <td>匹配 JSON 格式且含 type 字段的消息。使用高级模式(脚本)，根据 type 值返回不同响应，并演示 Mock.js 生成随机数据。</td>
-                  </tr>
-                  <tr>
-                    <td>默认回复</td>
-                    <td><el-tag size="small" type="info">任意匹配</el-tag></td>
-                    <td>—</td>
-                    <td>兜底规则，匹配所有未被前面规则命中的消息。规则按从上到下的顺序匹配，第一个命中即停止。</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <h3>⚙️ 四种匹配类型</h3>
-              <ul>
-                <li><code>精确匹配 (exact)</code> — 消息内容必须与匹配模式完全一致</li>
-                <li><code>包含匹配 (contains)</code> — 消息内容中包含匹配模式即可</li>
-                <li><code>正则匹配 (regex)</code> — 使用正则表达式匹配消息内容</li>
-                <li><code>任意匹配 (any)</code> — 匹配所有消息，通常作为兜底规则放在最后</li>
-              </ul>
-              <p class="guide-tip">💡 规则按列表顺序从上到下匹配，第一个命中的规则生效，后续规则不再检查。建议将精确匹配放在前面，任意匹配放在最后。</p>
-
-              <h3>📝 响应模式</h3>
-              <p><code>基础模式</code> — 直接返回填写的文本内容，适合固定响应。</p>
-              <p><code>高级模式 (脚本)</code> — 编写 JavaScript 脚本，需定义 <code>main(message, Mock)</code> 函数。可用变量：</p>
-              <pre class="guide-code">function main(message, Mock) {
-  // message  - 收到的原始消息字符串
-  // Mock     - Mock.js 实例，可生成随机数据
-  // clientId - 当前客户端 ID（沙箱全局变量）
-  // clientIp - 当前客户端 IP（沙箱全局变量）
-
-  // 返回字符串或对象（对象会自动 JSON.stringify）
-  return Mock.mock({
-    "list|5-10": [{ "id|+1": 1, name: "@cname", email: "@email" }]
-  });
-}</pre>
-
-              <h3>🔧 功能说明</h3>
-              <ul>
-                <li><code>欢迎消息</code> — 在「配置」Tab 设置，客户端连接时自动发送</li>
-                <li><code>连接管理</code> — 查看已连接的客户端，可手动断开指定连接</li>
-                <li><code>消息日志</code> — 实时查看收发消息，⬇蓝色=接收 ⬆绿色=发送 ℹ灰色=系统</li>
-                <li><code>手动发送</code> — 在日志 Tab 底部，选择目标客户端或广播，手动推送消息</li>
-                <li><code>延迟回复</code> — 每条规则可设置延迟(ms)，模拟网络延迟</li>
-              </ul>
             </div>
           </div>
         </el-tab-pane>
@@ -833,96 +735,5 @@ ws.send('其他任意消息');              // → 收到: 默认回复</pre>
   color: var(--text-secondary);
   font-size: 13px;
   padding: 20px 0;
-}
-
-/* ===== 指南 Tab ===== */
-.guide-content {
-  max-width: 720px;
-  line-height: 1.8;
-  font-size: 13px;
-  color: var(--text-primary);
-}
-
-.guide-content h3 {
-  font-size: 15px;
-  margin: 24px 0 10px 0;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-primary);
-}
-
-.guide-content h3:first-child {
-  margin-top: 0;
-}
-
-.guide-content ol,
-.guide-content ul {
-  padding-left: 20px;
-  margin: 8px 0;
-}
-
-.guide-content li {
-  margin: 4px 0;
-}
-
-.guide-content p {
-  margin: 6px 0;
-}
-
-.guide-content code {
-  background: var(--bg-hover);
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 12px;
-  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
-  color: var(--primary-color);
-}
-
-.guide-code {
-  background: var(--bg-frame, #f5f7fa);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 12px 16px;
-  font-size: 12px;
-  line-height: 1.7;
-  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
-  overflow-x: auto;
-  margin: 8px 0 12px 0;
-  white-space: pre;
-  color: var(--text-primary);
-}
-
-.guide-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 8px 0 12px 0;
-  font-size: 12px;
-}
-
-.guide-table th,
-.guide-table td {
-  border: 1px solid var(--border-color);
-  padding: 8px 10px;
-  text-align: left;
-}
-
-.guide-table th {
-  background: var(--bg-hover);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.guide-table td code {
-  font-size: 11px;
-  word-break: break-all;
-}
-
-.guide-tip {
-  background: rgba(64, 158, 255, 0.08);
-  border-left: 3px solid var(--primary-color);
-  padding: 8px 12px;
-  border-radius: 0 4px 4px 0;
-  margin: 10px 0;
-  font-size: 12px;
 }
 </style>

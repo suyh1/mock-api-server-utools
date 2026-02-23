@@ -2,10 +2,10 @@
 import { ref, computed, onMounted, inject } from 'vue';
 import { Plus, RefreshRight } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import type { MockGroup, MockRule, ResponsePreset, ResponseMode } from '@/types/mock';
+import type { MockService, MockRule, ResponsePreset, ResponseMode } from '@/types/mock';
 
 const API_BASE = ref('http://localhost:3000');
-const groups = ref<MockGroup[]>([]);
+const services = ref<MockService[]>([]);
 
 onMounted(() => {
   if (window.services) {
@@ -16,9 +16,9 @@ onMounted(() => {
 
 async function loadData() {
   try {
-    const res = await fetch(`${API_BASE.value}/_admin/rules`);
+    const res = await fetch(`${API_BASE.value}/_admin/services`);
     if (!res.ok) throw new Error();
-    groups.value = await res.json();
+    services.value = await res.json();
   } catch {
     ElMessage.error('加载数据失败');
   }
@@ -26,10 +26,10 @@ async function loadData() {
 
 async function saveData() {
   try {
-    await fetch(`${API_BASE.value}/_admin/rules`, {
+    await fetch(`${API_BASE.value}/_admin/services`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(groups.value),
+      body: JSON.stringify(services.value),
     });
   } catch {
     ElMessage.error('保存失败');
@@ -57,9 +57,11 @@ function setActivePreset(rule: MockRule, presetId: number | undefined) {
 
 function resetAll() {
   ElMessageBox.confirm('确定将所有接口恢复为默认响应吗？', '提示', { type: 'warning' }).then(() => {
-    groups.value.forEach(g => {
-      g.children.forEach(r => {
-        r.activePresetId = undefined;
+    services.value.forEach(s => {
+      s.groups.forEach(g => {
+        g.children.forEach(r => {
+          r.activePresetId = undefined;
+        });
       });
     });
     saveData();
@@ -150,7 +152,7 @@ function deletePreset(rule: MockRule, presetId: number) {
   saveData();
 }
 
-const groupsWithRules = computed(() => groups.value.filter(g => g.children.length > 0));
+const servicesWithRules = computed(() => services.value.filter(s => s.groups.some(g => g.children.length > 0)));
 </script>
 
 <template>
@@ -165,67 +167,71 @@ const groupsWithRules = computed(() => groups.value.filter(g => g.children.lengt
     </div>
 
     <div class="panel-body">
-      <div v-if="groupsWithRules.length === 0" class="empty-state">
-        <el-empty description="暂无接口数据" />
+      <div v-if="servicesWithRules.length === 0" class="empty-state">
+        <el-empty description="暂无接口数据" :image-size="80" />
       </div>
 
-      <div v-for="group in groupsWithRules" :key="group.id" class="group-section">
-        <div class="group-title">{{ group.name }}</div>
+      <div v-for="service in servicesWithRules" :key="service.id" class="service-section">
+        <div class="service-title">{{ service.name }}</div>
 
-        <div v-for="rule in group.children" :key="rule.id" class="rule-row">
-          <div class="rule-info">
-            <el-tag size="small" :type="methodTagType(rule.method)">{{ rule.method }}</el-tag>
-            <span class="rule-name">{{ rule.name || rule.url }}</span>
-            <span v-if="rule.name" class="rule-url">{{ rule.url }}</span>
-          </div>
+        <div v-for="group in service.groups.filter(g => g.children.length > 0)" :key="group.id" class="group-section">
+          <div class="group-title">{{ group.name }}</div>
 
-          <div class="rule-presets">
-            <el-radio-group
-              :model-value="getActivePresetId(rule) ?? 0"
-              size="small"
-              @change="(val: string | number | boolean | undefined) => setActivePreset(rule, val === 0 ? undefined : val as number)"
-            >
-              <el-radio-button :value="0">默认</el-radio-button>
-              <el-radio-button
-                v-for="preset in (rule.responsePresets || [])"
-                :key="preset.id"
-                :value="preset.id"
+          <div v-for="rule in group.children" :key="rule.id" class="rule-row">
+            <div class="rule-info">
+              <el-tag size="small" :type="methodTagType(rule.method)">{{ rule.method }}</el-tag>
+              <span class="rule-name">{{ rule.name || rule.url }}</span>
+              <span v-if="rule.name" class="rule-url">{{ rule.url }}</span>
+            </div>
+
+            <div class="rule-presets">
+              <el-radio-group
+                :model-value="getActivePresetId(rule) ?? 0"
+                size="small"
+                @change="(val: string | number | boolean | undefined) => setActivePreset(rule, val === 0 ? undefined : val as number)"
               >
-                {{ preset.name }}
-                <span class="preset-status">({{ preset.statusCode }})</span>
-              </el-radio-button>
-            </el-radio-group>
-
-            <el-dropdown trigger="click" @command="(cmd: string) => {
-              if (cmd === 'custom') { openCustomDialog(rule); }
-              else { addQuickPreset(rule, quickPresets[Number(cmd)]); }
-            }">
-              <el-button size="small" :icon="Plus" circle />
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-for="(qp, i) in quickPresets" :key="i" :command="String(i)">
-                    {{ qp.name }} ({{ qp.statusCode }})
-                  </el-dropdown-item>
-                  <el-dropdown-item divided command="custom">自定义预设...</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
-
-          <!-- 已有预设的删除按钮 -->
-          <div v-if="rule.responsePresets?.length" class="preset-actions">
-            <el-popconfirm
-              v-for="preset in rule.responsePresets"
-              :key="preset.id"
-              :title="`删除预设「${preset.name}」？`"
-              @confirm="deletePreset(rule, preset.id)"
-            >
-              <template #reference>
-                <el-tag size="small" closable type="info" class="preset-tag" @close.prevent>
+                <el-radio-button :value="0">默认</el-radio-button>
+                <el-radio-button
+                  v-for="preset in (rule.responsePresets || [])"
+                  :key="preset.id"
+                  :value="preset.id"
+                >
                   {{ preset.name }}
-                </el-tag>
-              </template>
-            </el-popconfirm>
+                  <span class="preset-status">({{ preset.statusCode }})</span>
+                </el-radio-button>
+              </el-radio-group>
+
+              <el-dropdown trigger="click" @command="(cmd: string) => {
+                if (cmd === 'custom') { openCustomDialog(rule); }
+                else { addQuickPreset(rule, quickPresets[Number(cmd)]); }
+              }">
+                <el-button size="small" :icon="Plus" circle />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-for="(qp, i) in quickPresets" :key="i" :command="String(i)">
+                      {{ qp.name }} ({{ qp.statusCode }})
+                    </el-dropdown-item>
+                    <el-dropdown-item divided command="custom">自定义预设...</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+
+            <!-- 已有预设的删除按钮 -->
+            <div v-if="rule.responsePresets?.length" class="preset-actions">
+              <el-popconfirm
+                v-for="preset in rule.responsePresets"
+                :key="preset.id"
+                :title="`删除预设「${preset.name}」？`"
+                @confirm="deletePreset(rule, preset.id)"
+              >
+                <template #reference>
+                  <el-tag size="small" closable type="info" class="preset-tag" @close.prevent>
+                    {{ preset.name }}
+                  </el-tag>
+                </template>
+              </el-popconfirm>
+            </div>
           </div>
         </div>
       </div>
@@ -313,11 +319,25 @@ const groupsWithRules = computed(() => groups.value.filter(g => g.children.lengt
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100%;
+  padding: 60px 20px;
+}
+
+.service-section {
+  margin-bottom: 24px;
+}
+
+.service-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary-color);
+  padding: 10px 0 6px 0;
+  border-bottom: 2px solid var(--primary-color);
+  margin-bottom: 8px;
 }
 
 .group-section {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+  padding-left: 8px;
 }
 
 .group-title {

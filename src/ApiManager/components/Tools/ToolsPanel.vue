@@ -68,6 +68,7 @@ const toolGroups = [
       { key: 'curl', label: 'cURL 解析', icon: '>>>', desc: '解析 curl 命令 ↔ 结构化数据 ↔ 多语言代码' },
       { key: 'httpcode', label: 'HTTP 状态码', icon: '200', desc: 'HTTP 状态码含义速查与搜索' },
       { key: 'jwt', label: 'JWT 解析', icon: 'JWT', desc: '解码 JWT Token 的 Header 和 Payload' },
+      { key: 'codegen', label: '代码生成', icon: '</>', desc: '从接口定义生成多语言 HTTP 请求代码' },
     ],
   },
   {
@@ -77,13 +78,6 @@ const toolGroups = [
       { key: 'ascii', label: 'ASCII 码表', icon: 'A=65', desc: '完整 ASCII 码对照表，支持搜索' },
       { key: 'cron', label: 'Cron 表达式', icon: '*/5', desc: '解析 Cron 为中文描述 + 执行时间' },
       { key: 'cssunit', label: 'CSS 单位', icon: 'px', desc: 'px/rem/em/vw/vh/pt 单位互转' },
-    ],
-  },
-  {
-    category: '文档生成',
-    categoryEn: 'DOC',
-    tools: [
-      { key: 'apidoc', label: '接口文档', icon: '📄', desc: '根据接口数据生成 Markdown 文档' },
     ],
   },
 ];
@@ -97,8 +91,8 @@ const formatToolKeys = new Set(['json', 'json2ts', 'jsonpath', 'jsondiff']);
 const encodeToolKeys = new Set(['url', 'base64', 'htmlencode', 'encrypt', 'unicode']);
 const dataToolKeys = new Set(['timestamp', 'uuid', 'mockdata', 'color', 'number', 'radix', 'hash', 'password', 'placeholder', 'qrcode']);
 const textToolKeys = new Set(['texttransform', 'regex', 'diff', 'markdown', 'textstat']);
-const networkToolKeys = new Set(['curl', 'httpcode', 'jwt']);
-const referenceToolKeys = new Set(['ascii', 'cron', 'cssunit', 'apidoc']);
+const networkToolKeys = new Set(['curl', 'httpcode', 'jwt', 'codegen']);
+const referenceToolKeys = new Set(['ascii', 'cron', 'cssunit']);
 </script>
 
 <template>

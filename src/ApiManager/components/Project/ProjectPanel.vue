@@ -287,7 +287,9 @@ onMounted(() => {
         </div>
       </div>
 
-      <el-empty v-if="!filteredProjects.length" description="暂无项目，点击上方按钮创建" />
+      <div v-if="!filteredProjects.length" class="empty-state">
+        <el-empty description="暂无项目，点击上方按钮创建" :image-size="80" />
+      </div>
     </el-scrollbar>
 
     <!-- 新建/编辑项目对话框 -->
@@ -377,6 +379,14 @@ onMounted(() => {
   flex: 1;
   overflow: hidden;
 }
+
+.empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 20px;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
