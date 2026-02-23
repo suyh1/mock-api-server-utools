@@ -23,9 +23,11 @@ import ServiceConfigPanel from './ServiceConfig.vue';
 import type { MockGroup, MockRule, TestResultFile, TestResultMeta, Project } from '@/types/mock';
 import { settingsKey } from '@/composables/useSettings';
 import { useRequestLogs } from '@/composables/useRequestLogs';
+import { environmentsKey } from '@/composables/useEnvironments';
 
 const appSettings = inject(settingsKey, null);
 const { addLog } = useRequestLogs();
+const envManager = inject(environmentsKey, null);
 
 /** 本机 IP 地址，用于拼接接口完整 URL */
 const localIp = ref('localhost');
@@ -512,9 +514,15 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
     const method = editingRule.value.method || 'GET';
     const fetchOptions: RequestInit = { method };
 
+    // 环境变量替换函数
+    const rv = (s: string) => envManager?.resolveVariables(s) ?? s;
+
+    // 对 URL 进行环境变量替换
+    targetUrl = rv(targetUrl);
+
     // 添加自定义请求头
     editingRule.value.headers?.forEach(h => {
-      if (h.key && h.value) customHeaders[h.key] = h.value;
+      if (h.key && h.value) customHeaders[rv(h.key)] = rv(h.value);
     });
 
     // 添加请求体
@@ -522,7 +530,7 @@ const handleRunTest = async (mode: 'mock' | 'real' = 'mock') => {
       const bodyDef = editingRule.value.body;
       if (bodyDef.type === 'json' && bodyDef.raw) {
         customHeaders['Content-Type'] = 'application/json';
-        fetchOptions.body = bodyDef.raw;
+        fetchOptions.body = rv(bodyDef.raw);
       } else if (bodyDef.type === 'form-data' && bodyDef.formData?.length) {
         const formData = new FormData();
         bodyDef.formData.forEach(item => {

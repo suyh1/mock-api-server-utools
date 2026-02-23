@@ -384,6 +384,33 @@ function saveTemplates(templates) {
   }
 }
 
+/* ==================== 环境变量数据管理 ==================== */
+
+/** uTools 数据库中存储环境变量的键名 */
+const DB_ENV_KEY = 'mock_environments_v1';
+
+/**
+ * 从 uTools 数据库读取所有环境
+ * @returns {Array} 环境数组
+ */
+function getEnvironments() {
+  const doc = utools.db.get(DB_ENV_KEY);
+  return doc ? doc.data : [];
+}
+
+/**
+ * 将环境数据保存到 uTools 数据库
+ * @param {Array} environments - 环境数组
+ */
+function saveEnvironments(environments) {
+  const doc = utools.db.get(DB_ENV_KEY);
+  if (doc) {
+    utools.db.put({ _id: DB_ENV_KEY, data: environments, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: DB_ENV_KEY, data: environments });
+  }
+}
+
 /* ==================== Admin 管理服务器 ==================== */
 
 /** Admin Express 应用实例 */
@@ -451,6 +478,37 @@ adminApp.post('/_admin/template/delete', (req, res) => {
 });
 
 /* -------------------- 项目管理 API -------------------- */
+
+/** GET /_admin/environments - 获取所有环境 */
+adminApp.get('/_admin/environments', (req, res) => {
+  res.json(getEnvironments());
+});
+
+/** POST /_admin/environment/save - 创建/更新环境 */
+adminApp.post('/_admin/environment/save', (req, res) => {
+  const env = req.body;
+  if (!env.name) {
+    return res.status(400).json({ error: 'Environment name is required' });
+  }
+  const environments = getEnvironments();
+  const idx = environments.findIndex(e => e.id === env.id);
+  if (idx !== -1) {
+    environments[idx] = { ...environments[idx], ...env, id: environments[idx].id, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    environments.push({ ...env, id: now, createdAt: now, updatedAt: now });
+  }
+  saveEnvironments(environments);
+  res.json({ success: true, data: environments });
+});
+
+/** POST /_admin/environment/delete - 删除环境 */
+adminApp.post('/_admin/environment/delete', (req, res) => {
+  const { id } = req.body;
+  const environments = getEnvironments().filter(e => e.id !== id);
+  saveEnvironments(environments);
+  res.json({ success: true, data: environments });
+});
 
 /** GET /_admin/projects - 获取所有项目 */
 adminApp.get('/_admin/projects', (req, res) => {

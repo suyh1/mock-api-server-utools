@@ -204,13 +204,15 @@ onMounted(loadTemplates);
         <span class="title">响应数据模板</span>
         <span class="subtitle">共 {{ templates.length }} 个模板</span>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openCreateDialog">新建模板</el-button>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <el-button type="primary" :icon="Plus" @click="openCreateDialog">新建模板</el-button>
+      </div>
     </div>
 
     <!-- 模板列表区域 -->
     <div class="template-list">
       <!-- 空状态提示 -->
-      <el-empty v-if="templates.length === 0" description="暂无模板，可以新建或从接口页保存" />
+      <el-empty v-if="templates.length === 0" description="暂无模板，可以新建或从接口页保存" :image-size="80" />
 
       <!-- 模板卡片网格 -->
       <div v-else class="card-grid">

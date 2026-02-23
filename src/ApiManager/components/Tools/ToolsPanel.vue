@@ -68,6 +68,7 @@ const toolGroups = [
       { key: 'curl', label: 'cURL 解析', icon: '>>>', desc: '解析 curl 命令 ↔ 结构化数据 ↔ 多语言代码' },
       { key: 'httpcode', label: 'HTTP 状态码', icon: '200', desc: 'HTTP 状态码含义速查与搜索' },
       { key: 'jwt', label: 'JWT 解析', icon: 'JWT', desc: '解码 JWT Token 的 Header 和 Payload' },
+      { key: 'codegen', label: '代码生成', icon: '</>', desc: '从接口定义生成多语言 HTTP 请求代码' },
     ],
   },
   {
@@ -97,7 +98,7 @@ const formatToolKeys = new Set(['json', 'json2ts', 'jsonpath', 'jsondiff']);
 const encodeToolKeys = new Set(['url', 'base64', 'htmlencode', 'encrypt', 'unicode']);
 const dataToolKeys = new Set(['timestamp', 'uuid', 'mockdata', 'color', 'number', 'radix', 'hash', 'password', 'placeholder', 'qrcode']);
 const textToolKeys = new Set(['texttransform', 'regex', 'diff', 'markdown', 'textstat']);
-const networkToolKeys = new Set(['curl', 'httpcode', 'jwt']);
+const networkToolKeys = new Set(['curl', 'httpcode', 'jwt', 'codegen']);
 const referenceToolKeys = new Set(['ascii', 'cron', 'cssunit', 'apidoc']);
 </script>
 

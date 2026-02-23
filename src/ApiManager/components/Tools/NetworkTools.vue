@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import CodeEditor from '../CodeEditor.vue';
 import { copyText } from './tools-utils';
+import type { MockGroup, MockRule } from '@/types/mock';
 
 defineProps<{
   activeTool: string;
@@ -327,6 +328,188 @@ function buildCurl(): string {
   if (curlBody.value) cmd += ` \\\n  -d '${curlBody.value}'`;
   return cmd;
 }
+
+/* ==================== 代码生成工具 ==================== */
+
+const codegenApiBase = ref('http://localhost:3000');
+const codegenGroups = ref<MockGroup[]>([]);
+const codegenSelectedRule = ref<number[]>([]);
+const codegenLang = ref('fetch');
+const codegenOutput = ref('');
+const codegenLoading = ref(false);
+
+const codegenCascaderOptions = computed(() => {
+  return codegenGroups.value.map(g => ({
+    value: g.id,
+    label: g.name,
+    children: g.children.map(r => ({
+      value: r.id,
+      label: `${r.method} ${r.name || r.url}`,
+    })),
+  }));
+});
+
+const codegenSelectedRuleData = computed<MockRule | null>(() => {
+  if (codegenSelectedRule.value.length !== 2) return null;
+  const [groupId, ruleId] = codegenSelectedRule.value;
+  const group = codegenGroups.value.find(g => g.id === groupId);
+  return group?.children.find(r => r.id === ruleId) || null;
+});
+
+async function loadCodegenData() {
+  codegenLoading.value = true;
+  try {
+    const res = await fetch(`${codegenApiBase.value}/_admin/rules`);
+    codegenGroups.value = await res.json();
+  } catch {}
+  codegenLoading.value = false;
+}
+
+function generateCode() {
+  const rule = codegenSelectedRuleData.value;
+  if (!rule) { codegenOutput.value = '// 请先选择一个接口'; return; }
+  const method = rule.method;
+  const url = rule.url;
+  const headers = rule.headers?.filter(h => h.key) || [];
+  const params = rule.params?.filter(p => p.key) || [];
+  const body = rule.body;
+
+  let fullUrl = url;
+  if (params.length) {
+    const qs = params.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value || '')}`).join('&');
+    fullUrl += (url.includes('?') ? '&' : '?') + qs;
+  }
+
+  switch (codegenLang.value) {
+    case 'fetch': codegenOutput.value = genFetchCode(method, fullUrl, headers, body); break;
+    case 'axios': codegenOutput.value = genAxiosCode(method, fullUrl, headers, body); break;
+    case 'python': codegenOutput.value = genPythonCode(method, fullUrl, headers, body); break;
+    case 'curl': codegenOutput.value = genCurlCmd(method, fullUrl, headers, body); break;
+    case 'okhttp': codegenOutput.value = genOkHttpCode(method, fullUrl, headers, body); break;
+    case 'go': codegenOutput.value = genGoCode(method, fullUrl, headers, body); break;
+    default: codegenOutput.value = '';
+  }
+}
+
+function getBodyStr(body?: { type: string; raw: string; formData?: { key: string; value: string }[] }): string {
+  if (!body || body.type === 'none') return '';
+  if (body.type === 'json' && body.raw) return body.raw;
+  if ((body.type === 'form-data' || body.type === 'x-www-form-urlencoded') && body.formData?.length) {
+    return body.formData.filter(f => f.key).map(f => `${f.key}=${f.value || ''}`).join('&');
+  }
+  return body.raw || '';
+}
+
+function isJsonBody(body?: { type: string }): boolean {
+  return body?.type === 'json';
+}
+
+type CodegenHeader = { key: string; value: string };
+type CodegenBody = { type: string; raw: string; formData?: { key: string; value: string }[] } | undefined;
+
+function genFetchCode(method: string, url: string, headers: CodegenHeader[], body: CodegenBody): string {
+  let code = `const response = await fetch('${url}'`;
+  const opts: string[] = [];
+  if (method !== 'GET') opts.push(`  method: '${method}'`);
+  if (headers.length) {
+    const hStr = headers.map(h => `    '${h.key}': '${h.value}'`).join(',\n');
+    opts.push(`  headers: {\n${hStr}\n  }`);
+  }
+  const bs = getBodyStr(body);
+  if (bs && method !== 'GET') {
+    if (isJsonBody(body)) opts.push(`  body: JSON.stringify(${bs})`);
+    else opts.push(`  body: '${bs.replace(/'/g, "\\'")}'`);
+  }
+  if (opts.length) code += `, {\n${opts.join(',\n')}\n}`;
+  code += ');\nconst data = await response.json();\nconsole.log(data);';
+  return code;
+}
+
+function genAxiosCode(method: string, url: string, headers: CodegenHeader[], body: CodegenBody): string {
+  let code = `import axios from 'axios';\n\n`;
+  const hasHeaders = headers.length > 0;
+  const bs = getBodyStr(body);
+  const hasBody = !!bs && method !== 'GET';
+  if (hasHeaders) code += `const headers = {\n${headers.map(h => `  '${h.key}': '${h.value}'`).join(',\n')}\n};\n\n`;
+  if (hasBody) {
+    if (isJsonBody(body)) code += `const data = ${bs};\n\n`;
+    else code += `const data = '${bs}';\n\n`;
+  }
+  code += `const response = await axios.${method.toLowerCase()}('${url}'`;
+  if (hasBody) code += ', data';
+  else if (hasHeaders) code += ', null';
+  if (hasHeaders) code += `, { headers }`;
+  else if (!hasBody && !hasHeaders) { /* no extra args */ }
+  code += ');\nconsole.log(response.data);';
+  return code;
+}
+
+function genPythonCode(method: string, url: string, headers: CodegenHeader[], body: CodegenBody): string {
+  let code = 'import requests\n\n';
+  const hasHeaders = headers.length > 0;
+  const bs = getBodyStr(body);
+  const hasBody = !!bs && method !== 'GET';
+  if (hasHeaders) code += `headers = {\n${headers.map(h => `    '${h.key}': '${h.value}'`).join(',\n')}\n}\n\n`;
+  if (hasBody) {
+    if (isJsonBody(body)) { try { JSON.parse(bs); code += `data = ${bs}\n\n`; } catch { code += `data = '${bs}'\n\n`; } }
+    else code += `data = '${bs}'\n\n`;
+  }
+  code += `response = requests.${method.toLowerCase()}('${url}'`;
+  if (hasHeaders) code += ', headers=headers';
+  if (hasBody) code += isJsonBody(body) ? ', json=data' : ', data=data';
+  code += ')\nprint(response.json())';
+  return code;
+}
+
+function genCurlCmd(method: string, url: string, headers: CodegenHeader[], body: CodegenBody): string {
+  let cmd = 'curl';
+  if (method !== 'GET') cmd += ` -X ${method}`;
+  cmd += ` '${url}'`;
+  for (const h of headers) cmd += ` \\\n  -H '${h.key}: ${h.value}'`;
+  const bs = getBodyStr(body);
+  if (bs && method !== 'GET') cmd += ` \\\n  -d '${bs}'`;
+  return cmd;
+}
+
+function genOkHttpCode(method: string, url: string, headers: CodegenHeader[], body: CodegenBody): string {
+  let code = 'OkHttpClient client = new OkHttpClient();\n\n';
+  const bs = getBodyStr(body);
+  const hasBody = !!bs && method !== 'GET';
+  if (hasBody) {
+    const mediaType = isJsonBody(body) ? 'application/json' : 'application/x-www-form-urlencoded';
+    code += `MediaType mediaType = MediaType.parse("${mediaType}");\n`;
+    code += `RequestBody body = RequestBody.create(mediaType, "${bs.replace(/"/g, '\\"')}");\n\n`;
+  }
+  code += 'Request request = new Request.Builder()\n';
+  code += `    .url("${url}")\n`;
+  if (method === 'GET') code += '    .get()\n';
+  else if (hasBody) code += `    .${method.toLowerCase()}(body)\n`;
+  else code += `    .method("${method}", null)\n`;
+  for (const h of headers) code += `    .addHeader("${h.key}", "${h.value}")\n`;
+  code += '    .build();\n\n';
+  code += 'Response response = client.newCall(request).execute();\nSystem.out.println(response.body().string());';
+  return code;
+}
+
+function genGoCode(method: string, url: string, headers: CodegenHeader[], body: CodegenBody): string {
+  const bs = getBodyStr(body);
+  const hasBody = !!bs && method !== 'GET';
+  let code = 'package main\n\nimport (\n\t"fmt"\n\t"net/http"\n\t"io"\n';
+  if (hasBody) code += '\t"strings"\n';
+  code += ')\n\nfunc main() {\n';
+  if (hasBody) code += `\tbody := strings.NewReader(\`${bs}\`)\n`;
+  code += `\treq, _ := http.NewRequest("${method}", "${url}", ${hasBody ? 'body' : 'nil'})\n`;
+  for (const h of headers) code += `\treq.Header.Set("${h.key}", "${h.value}")\n`;
+  code += '\tresp, _ := http.DefaultClient.Do(req)\n\tdefer resp.Body.Close()\n\tdata, _ := io.ReadAll(resp.Body)\n\tfmt.Println(string(data))\n}';
+  return code;
+}
+
+onMounted(() => {
+  if (window.services) {
+    codegenApiBase.value = window.services.getServerUrl();
+  }
+  loadCodegenData();
+});
 </script>
 
 <template>
@@ -380,6 +563,42 @@ function buildCurl(): string {
         <div v-if="!filteredHttpCodes.length" class="tool-hint" style="text-align: center; padding: 24px;">
           没有找到匹配的状态码
         </div>
+      </div>
+    </template>
+
+    <!-- 代码生成 -->
+    <template v-if="activeTool === 'codegen'">
+      <div class="tool-row">
+        <div class="tool-col" style="flex: 1;">
+          <label>选择接口</label>
+          <el-cascader
+            v-model="codegenSelectedRule"
+            :options="codegenCascaderOptions"
+            placeholder="选择分组 / 接口"
+            :props="{ expandTrigger: 'hover' }"
+            clearable
+            style="width: 100%"
+            @change="generateCode"
+          />
+        </div>
+      </div>
+      <div class="tool-col" style="margin-top: 12px;">
+        <label>目标语言</label>
+        <el-radio-group v-model="codegenLang" size="small" @change="generateCode">
+          <el-radio-button value="fetch">JS (fetch)</el-radio-button>
+          <el-radio-button value="axios">JS (axios)</el-radio-button>
+          <el-radio-button value="python">Python</el-radio-button>
+          <el-radio-button value="curl">cURL</el-radio-button>
+          <el-radio-button value="okhttp">Java (OkHttp)</el-radio-button>
+          <el-radio-button value="go">Go</el-radio-button>
+        </el-radio-group>
+      </div>
+      <div v-if="codegenOutput" class="editor-box" style="height: 300px; margin-top: 12px;">
+        <CodeEditor v-model="codegenOutput" language="javascript" :isDark="isDark" :readonly="true" />
+      </div>
+      <div class="tool-toolbar" style="margin-top: 8px;">
+        <el-button @click="copyText(codegenOutput)" :disabled="!codegenOutput">复制代码</el-button>
+        <el-button @click="loadCodegenData" :loading="codegenLoading">刷新接口</el-button>
       </div>
     </template>
 

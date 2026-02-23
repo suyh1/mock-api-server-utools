@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import CodeEditor from '../CodeEditor.vue';
 import { copyText } from './tools-utils';
 import type { MockGroup, Project } from '@/types/mock';
+import { generateMarkdownDoc } from '@/utils/generateApiDoc';
 
 defineProps<{
   activeTool: string;
@@ -202,132 +203,13 @@ const loadDocData = async () => {
 
 const generateDoc = () => {
   docLoading.value = true;
-  let targetGroups: MockGroup[] = [];
-
-  if (docScope.value === 'project' && docProjectId.value) {
-    targetGroups = docGroups.value.filter(g => g.projectId === docProjectId.value);
-  } else if (docScope.value === 'group' && docGroupId.value) {
-    targetGroups = docGroups.value.filter(g => g.id === docGroupId.value);
-  } else {
-    targetGroups = docGroups.value;
-  }
-
-  const lines: string[] = [];
-  const title = docScope.value === 'project'
-    ? docProjects.value.find(p => p.id === docProjectId.value)?.name || '项目'
-    : docScope.value === 'group'
-    ? targetGroups[0]?.name || '分组'
-    : 'API';
-
-  lines.push(`# ${title} 接口文档`);
-  lines.push('');
-  lines.push(`> 生成时间：${new Date().toLocaleString('zh-CN')}`);
-  lines.push('');
-
-  // 目录
-  lines.push('## 目录');
-  lines.push('');
-  for (const group of targetGroups) {
-    lines.push(`- **${group.name}**${group.description ? ` - ${group.description}` : ''}`);
-    for (const rule of group.children) {
-      const name = rule.name || rule.url;
-      lines.push(`  - \`${rule.method}\` ${name}`);
-    }
-  }
-  lines.push('');
-  lines.push('---');
-  lines.push('');
-
-  // 详细接口
-  for (const group of targetGroups) {
-    lines.push(`## ${group.name}`);
-    if (group.description) lines.push(`> ${group.description}`);
-    lines.push('');
-
-    for (const rule of group.children) {
-      const name = rule.name || rule.url;
-      lines.push(`### ${name}`);
-      lines.push('');
-      lines.push(`- **方法**: \`${rule.method}\``);
-      lines.push(`- **路径**: \`${rule.url}\``);
-      lines.push(`- **状态**: ${rule.active ? '✅ 启用' : '❌ 禁用'}`);
-      if (rule.delay) lines.push(`- **延迟**: ${rule.delay}ms`);
-      lines.push('');
-
-      // 请求头
-      const reqHeaders = rule.headers?.filter(h => h.key);
-      if (reqHeaders?.length) {
-        lines.push('#### 请求头');
-        lines.push('');
-        lines.push('| Key | Value | 必填 | 说明 |');
-        lines.push('|-----|-------|------|------|');
-        for (const h of reqHeaders) {
-          lines.push(`| ${h.key} | ${h.value || '-'} | ${h.required ? '是' : '否'} | ${h.description || '-'} |`);
-        }
-        lines.push('');
-      }
-
-      // Query 参数
-      const params = rule.params?.filter(p => p.key);
-      if (params?.length) {
-        lines.push('#### Query 参数');
-        lines.push('');
-        lines.push('| 参数名 | 示例值 | 必填 | 说明 |');
-        lines.push('|--------|--------|------|------|');
-        for (const p of params) {
-          lines.push(`| ${p.key} | ${p.value || '-'} | ${p.required ? '是' : '否'} | ${p.description || '-'} |`);
-        }
-        lines.push('');
-      }
-
-      // 请求体
-      if (rule.body && rule.body.type !== 'none') {
-        lines.push('#### 请求体');
-        lines.push('');
-        lines.push(`类型: \`${rule.body.type}\``);
-        lines.push('');
-        if (rule.body.type === 'json' && rule.body.raw) {
-          lines.push('```json');
-          try { lines.push(JSON.stringify(JSON.parse(rule.body.raw), null, 2)); }
-          catch { lines.push(rule.body.raw); }
-          lines.push('```');
-        } else if (rule.body.formData?.length) {
-          lines.push('| Key | Value | 说明 |');
-          lines.push('|-----|-------|------|');
-          for (const f of rule.body.formData.filter(f => f.key)) {
-            lines.push(`| ${f.key} | ${f.value || '-'} | ${f.description || '-'} |`);
-          }
-        }
-        lines.push('');
-      }
-
-      // 响应
-      lines.push('#### 响应');
-      lines.push('');
-      if (rule.responseMode === 'basic') {
-        lines.push(`Content-Type: \`${rule.responseType || 'application/json'}\``);
-        lines.push('');
-        if (rule.responseBasic) {
-          const lang = rule.responseType?.includes('json') ? 'json' : 'text';
-          lines.push(`\`\`\`${lang}`);
-          if (lang === 'json') {
-            try { lines.push(JSON.stringify(JSON.parse(rule.responseBasic), null, 2)); }
-            catch { lines.push(rule.responseBasic); }
-          } else {
-            lines.push(rule.responseBasic);
-          }
-          lines.push('```');
-        }
-      } else {
-        lines.push('> 高级模式（脚本生成响应）');
-      }
-      lines.push('');
-      lines.push('---');
-      lines.push('');
-    }
-  }
-
-  docResult.value = lines.join('\n');
+  docResult.value = generateMarkdownDoc(docGroups.value, {
+    scope: docScope.value,
+    projectId: docProjectId.value,
+    groupId: docGroupId.value,
+    projects: docProjects.value,
+    showDisabled: true,
+  });
   docLoading.value = false;
 };
 

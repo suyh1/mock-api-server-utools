@@ -166,7 +166,7 @@ const groupsWithRules = computed(() => groups.value.filter(g => g.children.lengt
 
     <div class="panel-body">
       <div v-if="groupsWithRules.length === 0" class="empty-state">
-        <el-empty description="暂无接口数据" />
+        <el-empty description="暂无接口数据" :image-size="80" />
       </div>
 
       <div v-for="group in groupsWithRules" :key="group.id" class="group-section">
@@ -313,7 +313,7 @@ const groupsWithRules = computed(() => groups.value.filter(g => g.children.lengt
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100%;
+  padding: 60px 20px;
 }
 
 .group-section {

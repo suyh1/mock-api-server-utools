@@ -101,6 +101,24 @@ export interface Project {
     updatedAt: number;
 }
 
+// ==================== 环境变量 ====================
+
+export interface EnvVariable {
+  key: string;
+  value: string;
+  description?: string;
+  enabled: boolean;
+}
+
+export interface Environment {
+  id: number;
+  name: string;
+  color?: string;
+  variables: EnvVariable[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 // 请求日志
 export interface RequestLog {
   id: number;

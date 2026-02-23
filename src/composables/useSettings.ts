@@ -2,6 +2,15 @@ import { reactive, watch } from 'vue';
 import type { InjectionKey } from 'vue';
 import type { HttpMethod } from '@/types/mock';
 
+/** 所有可配置的侧边栏模块 key */
+export type SidebarModuleKey = 'dashboard' | 'project' | 'api' | 'template' | 'scenario' | 'tools' | 'environment' | 'doc' | 'log' | 'websocket';
+
+/** 默认一级入口 */
+export const DEFAULT_PRIMARY: SidebarModuleKey[] = ['dashboard', 'api', 'template', 'scenario', 'tools'];
+
+/** 默认更多面板 */
+export const DEFAULT_MORE: SidebarModuleKey[] = ['project', 'environment', 'doc', 'log', 'websocket'];
+
 export interface AppSettings {
   editorFontSize: number;
   editorTabSize: number;
@@ -9,6 +18,8 @@ export interface AppSettings {
   defaultPrefix: string;
   defaultMethod: HttpMethod;
   defaultDelay: number;
+  sidebarPrimary: SidebarModuleKey[];
+  sidebarMore: SidebarModuleKey[];
 }
 
 const STORAGE_KEY = 'mock-api-settings';
@@ -20,6 +31,8 @@ const defaults: AppSettings = {
   defaultPrefix: '',
   defaultMethod: 'GET',
   defaultDelay: 0,
+  sidebarPrimary: [...DEFAULT_PRIMARY],
+  sidebarMore: [...DEFAULT_MORE],
 };
 
 function load(): AppSettings {

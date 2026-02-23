@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { Delete, Search } from '@element-plus/icons-vue';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox, ElMessage } from 'element-plus';
 import { useRequestLogs } from '@/composables/useRequestLogs';
-import type { HttpMethod } from '@/types/mock';
+import type { HttpMethod, RequestLog } from '@/types/mock';
 
-const { logs, clearLogs, logCount } = useRequestLogs();
+const { logs, clearLogs, logCount, addLog } = useRequestLogs();
 
 const filterMethod = ref<HttpMethod | ''>('');
 const filterStatus = ref<'' | '2xx' | '4xx' | '5xx'>('');
@@ -68,6 +68,67 @@ function formatHeaders(headers?: Record<string, string>) {
   if (!headers || Object.keys(headers).length === 0) return '(无)';
   return Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\n');
 }
+
+/* ==================== 请求重放 ==================== */
+
+const replayingId = ref<number | null>(null);
+const showCompareDialog = ref(false);
+const compareOriginal = ref<{ status: number; duration: number; body: string }>({ status: 0, duration: 0, body: '' });
+const compareNew = ref<{ status: number; duration: number; body: string }>({ status: 0, duration: 0, body: '' });
+
+async function replayRequest(log: RequestLog) {
+  replayingId.value = log.id;
+  compareOriginal.value = {
+    status: log.status,
+    duration: log.duration,
+    body: log.responseBody || '(无)',
+  };
+
+  try {
+    const fetchOptions: RequestInit = { method: log.method };
+    if (log.requestHeaders && Object.keys(log.requestHeaders).length > 0) {
+      fetchOptions.headers = { ...log.requestHeaders };
+    }
+    if (log.requestBody && log.method !== 'GET') {
+      fetchOptions.body = log.requestBody;
+    }
+
+    const startTime = Date.now();
+    const res = await fetch(log.url, fetchOptions);
+    const elapsed = Date.now() - startTime;
+    const resHeaders: Record<string, string> = {};
+    res.headers.forEach((v, k) => { resHeaders[k] = v; });
+    const text = await res.text();
+    let displayBody = text;
+    try { displayBody = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+
+    compareNew.value = { status: res.status, duration: elapsed, body: displayBody };
+
+    addLog({
+      timestamp: Date.now(),
+      method: log.method,
+      url: log.url,
+      status: res.status,
+      statusText: res.statusText,
+      duration: elapsed,
+      mode: log.mode,
+      ruleId: log.ruleId,
+      ruleName: log.ruleName ? `[重放] ${log.ruleName}` : '[重放]',
+      groupName: log.groupName,
+      requestHeaders: log.requestHeaders,
+      requestBody: log.requestBody,
+      responseHeaders: resHeaders,
+      responseBody: text,
+    });
+
+    showCompareDialog.value = true;
+  } catch (e: any) {
+    compareNew.value = { status: 0, duration: 0, body: `Error: ${e.message}` };
+    showCompareDialog.value = true;
+    ElMessage.error('重放失败: ' + e.message);
+  }
+  replayingId.value = null;
+}
 </script>
 
 <template>
@@ -90,7 +151,7 @@ function formatHeaders(headers?: Record<string, string>) {
     </div>
 
     <div class="table-wrapper">
-      <el-table :data="filteredLogs" stripe style="width: 100%" row-key="id" size="small">
+      <el-table :data="filteredLogs" stripe style="width: 100%" row-key="id" size="small" v-if="logCount > 0">
         <el-table-column type="expand">
           <template #default="{ row }">
             <div class="expand-detail">
@@ -139,8 +200,41 @@ function formatHeaders(headers?: Record<string, string>) {
             <el-tag size="small" :type="row.mode === 'mock' ? 'primary' : 'info'" effect="plain">{{ row.mode === 'mock' ? 'Mock' : 'Real' }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" link type="primary" @click="replayRequest(row)" :loading="replayingId === row.id">重放</el-button>
+          </template>
+        </el-table-column>
       </el-table>
+
+      <!-- 空状态 -->
+      <div v-else class="empty-state">
+        <el-empty description="暂无请求日志" :image-size="80" />
+      </div>
     </div>
+
+    <!-- 重放对比对话框 -->
+    <el-dialog v-model="showCompareDialog" title="重放对比" width="800px" destroy-on-close>
+      <div class="compare-container">
+        <div class="compare-side">
+          <div class="compare-title">原始响应</div>
+          <div class="compare-meta">
+            <span>状态码: <b :style="{ color: statusColor(compareOriginal.status) }">{{ compareOriginal.status }}</b></span>
+            <span>耗时: <b>{{ compareOriginal.duration }}ms</b></span>
+          </div>
+          <pre class="compare-body">{{ compareOriginal.body }}</pre>
+        </div>
+        <div class="compare-divider"></div>
+        <div class="compare-side">
+          <div class="compare-title">重放响应</div>
+          <div class="compare-meta">
+            <span>状态码: <b :style="{ color: statusColor(compareNew.status) }">{{ compareNew.status }}</b></span>
+            <span>耗时: <b>{{ compareNew.duration }}ms</b></span>
+          </div>
+          <pre class="compare-body">{{ compareNew.body }}</pre>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -214,5 +308,65 @@ function formatHeaders(headers?: Record<string, string>) {
 
 .error-text {
   color: #f56c6c;
+}
+
+/* ==================== 重放对比 ==================== */
+
+.compare-container {
+  display: flex;
+  gap: 0;
+  min-height: 300px;
+}
+
+.compare-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.compare-divider {
+  width: 1px;
+  background: var(--border-color, #e5e6eb);
+  margin: 0 12px;
+  flex-shrink: 0;
+}
+
+.compare-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.compare-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.compare-body {
+  flex: 1;
+  background: var(--bg-frame, #f5f7fa);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow: auto;
+}
+
+/* ==================== 空状态 ==================== */
+
+.empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 20px;
 }
 </style>
