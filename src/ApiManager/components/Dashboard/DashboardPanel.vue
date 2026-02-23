@@ -15,7 +15,7 @@ const runningCount = ref(0);
 const loading = ref(false);
 const { logs } = useRequestLogs();
 
-const totalRules = computed(() => services.value.reduce((sum, s) => s.groups.reduce((gs, g) => gs + g.children.length, gs), 0));
+const totalRules = computed(() => services.value.reduce((sum, s) => s.groups.reduce((gs, g) => gs + g.children.length, sum), 0));
 const serviceCount = computed(() => services.value.length);
 const recentLogs = computed(() => logs.value.slice(0, 10));
 

@@ -80,13 +80,6 @@ const toolGroups = [
       { key: 'cssunit', label: 'CSS 单位', icon: 'px', desc: 'px/rem/em/vw/vh/pt 单位互转' },
     ],
   },
-  {
-    category: '文档生成',
-    categoryEn: 'DOC',
-    tools: [
-      { key: 'apidoc', label: '接口文档', icon: '📄', desc: '根据接口数据生成 Markdown 文档' },
-    ],
-  },
 ];
 
 const allTools = computed(() => toolGroups.flatMap(g => g.tools));
@@ -99,7 +92,7 @@ const encodeToolKeys = new Set(['url', 'base64', 'htmlencode', 'encrypt', 'unico
 const dataToolKeys = new Set(['timestamp', 'uuid', 'mockdata', 'color', 'number', 'radix', 'hash', 'password', 'placeholder', 'qrcode']);
 const textToolKeys = new Set(['texttransform', 'regex', 'diff', 'markdown', 'textstat']);
 const networkToolKeys = new Set(['curl', 'httpcode', 'jwt', 'codegen']);
-const referenceToolKeys = new Set(['ascii', 'cron', 'cssunit', 'apidoc']);
+const referenceToolKeys = new Set(['ascii', 'cron', 'cssunit']);
 </script>
 
 <template>

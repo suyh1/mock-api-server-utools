@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import CodeEditor from '../CodeEditor.vue';
+import { ref, computed } from 'vue';
 import { copyText } from './tools-utils';
-import type { MockGroup, Project } from '@/types/mock';
-import { generateMarkdownDoc } from '@/utils/generateApiDoc';
 
 defineProps<{
   activeTool: string;
@@ -179,63 +176,6 @@ const cssUnits = computed(() => {
   };
 });
 
-/* ==================== 接口文档生成 ==================== */
-
-const API_BASE = ref('http://localhost:3000');
-const docProjects = ref<Project[]>([]);
-const docGroups = ref<MockGroup[]>([]);
-const docScope = ref<'all' | 'project' | 'group'>('all');
-const docProjectId = ref<number | null>(null);
-const docGroupId = ref<number | null>(null);
-const docResult = ref('');
-const docLoading = ref(false);
-
-const loadDocData = async () => {
-  try {
-    const [pRes, gRes] = await Promise.all([
-      fetch(`${API_BASE.value}/_admin/projects`),
-      fetch(`${API_BASE.value}/_admin/rules`),
-    ]);
-    docProjects.value = await pRes.json();
-    docGroups.value = await gRes.json();
-  } catch {}
-};
-
-const generateDoc = () => {
-  docLoading.value = true;
-  docResult.value = generateMarkdownDoc(docGroups.value, {
-    scope: docScope.value,
-    projectId: docProjectId.value,
-    groupId: docGroupId.value,
-    projects: docProjects.value,
-    showDisabled: true,
-  });
-  docLoading.value = false;
-};
-
-const copyDoc = () => {
-  navigator.clipboard.writeText(docResult.value).then(() => {
-    // use a simple alert since we don't import ElMessage here
-    alert('已复制到剪贴板');
-  });
-};
-
-const downloadDoc = () => {
-  const blob = new Blob([docResult.value], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `api-doc-${Date.now()}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-onMounted(() => {
-  if (window.services) {
-    API_BASE.value = window.services.getServerUrl();
-  }
-  loadDocData();
-});
 </script>
 
 <template>
@@ -332,37 +272,6 @@ onMounted(() => {
       <div class="tool-hint" style="margin-top: 8px;">点击任意项可复制</div>
     </template>
 
-    <!-- 接口文档生成 -->
-    <template v-if="activeTool === 'apidoc'">
-      <div class="tool-col">
-        <label>生成范围</label>
-        <el-radio-group v-model="docScope" size="small">
-          <el-radio-button value="all">全部</el-radio-button>
-          <el-radio-button value="project">按项目</el-radio-button>
-          <el-radio-button value="group">按分组</el-radio-button>
-        </el-radio-group>
-      </div>
-      <div v-if="docScope === 'project'" class="tool-col">
-        <label>选择项目</label>
-        <el-select v-model="docProjectId" placeholder="请选择" size="small" style="width: 240px">
-          <el-option v-for="p in docProjects" :key="p.id" :label="`${p.icon || '📦'} ${p.name}`" :value="p.id" />
-        </el-select>
-      </div>
-      <div v-if="docScope === 'group'" class="tool-col">
-        <label>选择分组</label>
-        <el-select v-model="docGroupId" placeholder="请选择" size="small" style="width: 240px">
-          <el-option v-for="g in docGroups" :key="g.id" :label="g.name" :value="g.id" />
-        </el-select>
-      </div>
-      <div class="tool-toolbar">
-        <el-button type="primary" @click="generateDoc" :loading="docLoading">生成文档</el-button>
-        <el-button v-if="docResult" @click="copyDoc">复制</el-button>
-        <el-button v-if="docResult" @click="downloadDoc">下载 .md</el-button>
-      </div>
-      <div v-if="docResult" class="doc-preview">
-        <CodeEditor :modelValue="docResult" :readOnly="true" :isDark="isDark" />
-      </div>
-    </template>
   </div>
 </template>
 
@@ -402,15 +311,6 @@ onMounted(() => {
   font-family: 'Courier New', Courier, monospace;
   font-size: 13px;
   color: var(--text-primary);
-}
-
-/* 文档生成 */
-.doc-preview {
-  flex: 1;
-  min-height: 300px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  overflow: hidden;
 }
 
 /* ==================== ASCII 表 ==================== */

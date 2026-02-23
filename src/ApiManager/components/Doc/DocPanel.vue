@@ -33,7 +33,7 @@ const displayServices = computed(() => {
   })).filter(s => s.groups.length > 0);
 });
 
-const totalApis = computed(() => displayServices.value.reduce((sum, s) => s.groups.reduce((gs, g) => gs + g.children.length, gs), 0));
+const totalApis = computed(() => displayServices.value.reduce((sum, s) => s.groups.reduce((gs, g) => gs + g.children.length, sum), 0));
 
 type TagType = 'success' | 'warning' | 'info' | 'danger';
 function methodColor(method: string): TagType {
