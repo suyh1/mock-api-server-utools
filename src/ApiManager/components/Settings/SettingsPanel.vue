@@ -35,7 +35,7 @@ const handleDarkChange = (val: string | number | boolean) => {
 const moduleLabels: Record<SidebarModuleKey, string> = {
   dashboard: '📊 看板', project: '📁 项目', api: '🔗 接口', template: '📋 模板',
   scenario: '🎭 场景', tools: '🔧 工具', environment: '🌐 环境', doc: '📄 文档',
-  log: '📜 日志', websocket: '⚡ WS',
+  log: '📜 日志', websocket: '⚡ WS', testrunner: '🧪 测试',
 };
 
 /** 拖拽状态 */

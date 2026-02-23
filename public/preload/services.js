@@ -25,8 +25,12 @@ const net = require('net')
 const vm = require('vm')
 /** Node.js HTTP 模块，用于创建 WS 底层 HTTP 服务 */
 const http = require('http')
+/** Node.js HTTPS 模块，用于代理录制 HTTPS 请求 */
+const https = require('https')
 /** WebSocket 库 */
 const WebSocket = require('ws')
+/** Node.js URL 模块 */
+const urlModule = require('url')
 
 /**
  * 尝试加载 mockjs 库
@@ -62,6 +66,119 @@ const LOCAL_IP = getLocalIP();
 const ADMIN_PORT = 3000;
 /** uTools 数据库中存储 Mock 规则的键名 */
 const DB_KEY = 'mock_rules_v1';
+/** uTools 数据库中存储测试用例的键名 */
+const TESTCASES_DB_KEY = 'mock_testcases_v1';
+/** uTools 数据库中存储测试套件的键名 */
+const TESTSUITES_DB_KEY = 'mock_testsuites_v1';
+
+/* ==================== 路径参数匹配工具 ==================== */
+
+/**
+ * 匹配路径参数模式（如 /users/:id/posts/:postId）
+ * @param {string} pattern - 路径模式（含 :param 占位符）
+ * @param {string} actual - 实际请求路径
+ * @returns {{ matched: boolean, params: Object }} 匹配结果及提取的参数
+ */
+function matchPathPattern(pattern, actual) {
+  if (!pattern || !actual) return { matched: false, params: {} };
+  const patternParts = pattern.split('/').filter(Boolean);
+  const actualParts = actual.split('/').filter(Boolean);
+  if (patternParts.length !== actualParts.length) return { matched: false, params: {} };
+  const params = {};
+  for (let i = 0; i < patternParts.length; i++) {
+    if (patternParts[i].startsWith(':')) {
+      params[patternParts[i].slice(1)] = actualParts[i];
+    } else if (patternParts[i] !== actualParts[i]) {
+      return { matched: false, params: {} };
+    }
+  }
+  return { matched: true, params };
+}
+
+/**
+ * 判断 URL 模式中是否包含路径参数
+ * @param {string} url - URL 模式
+ * @returns {boolean}
+ */
+function hasPathParams(url) {
+  return url && url.includes(':');
+}
+
+/* ==================== 条件响应（Mock 期望）匹配工具 ==================== */
+
+/**
+ * 从嵌套对象中按 JSON path 取值
+ * @param {Object} obj - 目标对象
+ * @param {string} path - 路径（如 data.user.name）
+ * @returns {*} 取到的值
+ */
+function getByPath(obj, path) {
+  if (!obj || !path) return undefined;
+  return path.split('.').reduce((o, k) => (o != null ? o[k] : undefined), obj);
+}
+
+/**
+ * 评估单个条件
+ * @param {Object} condition - 期望条件 { source, key, operator, value }
+ * @param {Object} req - Express 请求对象
+ * @param {Object} pathParams - 路径参数
+ * @returns {boolean}
+ */
+function evaluateCondition(condition, req, pathParams) {
+  let actual;
+  switch (condition.source) {
+    case 'query':
+      actual = req.query[condition.key];
+      break;
+    case 'header':
+      actual = req.headers[condition.key.toLowerCase()];
+      break;
+    case 'body':
+      actual = getByPath(req.body, condition.key);
+      break;
+    case 'pathParam':
+      actual = pathParams[condition.key];
+      break;
+    default:
+      return false;
+  }
+
+  const expected = condition.value;
+
+  switch (condition.operator) {
+    case 'equals':
+      return String(actual) === String(expected);
+    case 'contains':
+      return actual != null && String(actual).includes(expected);
+    case 'regex':
+      try { return actual != null && new RegExp(expected).test(String(actual)); } catch { return false; }
+    case 'exists':
+      return actual !== undefined && actual !== null && actual !== '';
+    case 'gt':
+      return actual != null && Number(actual) > Number(expected);
+    case 'lt':
+      return actual != null && Number(actual) < Number(expected);
+    default:
+      return false;
+  }
+}
+
+/**
+ * 查找第一个匹配的期望
+ * @param {Array} expectations - 期望列表
+ * @param {Object} req - Express 请求对象
+ * @param {Object} pathParams - 路径参数
+ * @returns {Object|null} 匹配到的期望对象
+ */
+function findMatchingExpectation(expectations, req, pathParams) {
+  if (!expectations || !expectations.length) return null;
+  for (const exp of expectations) {
+    if (!exp.conditions || !exp.conditions.length) continue;
+    const allMatch = exp.conditions.every(c => evaluateCondition(c, req, pathParams || {}));
+    if (allMatch) return exp;
+  }
+  return null;
+}
 
 /* ==================== Window Services（暴露给渲染进程的接口） ==================== */
 
@@ -171,14 +288,38 @@ function startGroupServer(rawGroupId, port, prefix) {
       const targetGroup = groups.find(g => String(g.id) === groupId);
       if (!targetGroup) return res.status(404).json({ error: 'Group not found' });
 
-      const matchedRule = targetGroup.children.find(r => {
+      // 两遍匹配策略：先精确匹配，再路径参数匹配
+      let matchedRule = null;
+      let pathParams = {};
+
+      // 第一遍：精确匹配（优先级最高）
+      matchedRule = targetGroup.children.find(r => {
           let ruleUrl = r.url;
           if (ruleUrl && !ruleUrl.startsWith('/')) ruleUrl = '/' + ruleUrl;
           return r.active && r.method === method && ruleUrl === url;
       });
 
+      // 第二遍：路径参数匹配（仅当精确匹配失败时尝试）
+      if (!matchedRule) {
+        for (const r of targetGroup.children) {
+          if (!r.active || r.method !== method) continue;
+          let ruleUrl = r.url;
+          if (ruleUrl && !ruleUrl.startsWith('/')) ruleUrl = '/' + ruleUrl;
+          if (!hasPathParams(ruleUrl)) continue;
+          const result = matchPathPattern(ruleUrl, url);
+          if (result.matched) {
+            matchedRule = r;
+            pathParams = result.params;
+            break;
+          }
+        }
+      }
+
       if (matchedRule) {
-        console.log(`[Group ${groupId}] Hit: ${method} ${url}`);
+        console.log(`[Group ${groupId}] Hit: ${method} ${url}`, Object.keys(pathParams).length ? `params: ${JSON.stringify(pathParams)}` : '');
+
+        // 将路径参数挂载到 req 上
+        req.params = { ...(req.params || {}), ...pathParams };
 
         // 1. 入参校验（检查必填的 Header 和 Query 参数）
         const missing = [];
@@ -190,22 +331,39 @@ function startGroupServer(rawGroupId, port, prefix) {
         });
         if (missing.length > 0) return res.status(400).json({ error: 'Validation failed', details: missing });
 
-        // 2. 模拟网络延迟（毫秒）
-        if (matchedRule.delay > 0) await new Promise(r => setTimeout(r, matchedRule.delay));
+        // 2. 模拟网络延迟（支持范围随机延迟）
+        const delayMin = matchedRule.delay || 0;
+        const delayMax = matchedRule.delayMax || 0;
+        let actualDelay = delayMin;
+        if (delayMax > delayMin) {
+          actualDelay = Math.floor(Math.random() * (delayMax - delayMin) + delayMin);
+        }
+        if (actualDelay > 0) await new Promise(r => setTimeout(r, actualDelay));
 
         // 3. 设置自定义响应头
         matchedRule.responseHeaders?.forEach(h => {
           if (h.key && h.value) res.setHeader(h.key, h.value);
         });
 
-        // 4. 预设覆盖：如果有激活的预设，用预设配置替代默认响应
+        // 4. 条件响应（Mock 期望）：优先级最高
         let activeMode = matchedRule.responseMode || 'basic';
         let activeResponseType = matchedRule.responseType || 'application/json';
         let activeResponseBasic = matchedRule.responseBasic;
         let activeResponseAdvanced = matchedRule.responseAdvanced;
         let activeStatusCode = 200;
+        let mockjsEnabled = matchedRule.mockjsEnabled || false;
 
-        if (matchedRule.activePresetId && matchedRule.responsePresets) {
+        const matchedExpectation = findMatchingExpectation(matchedRule.expectations, req, pathParams);
+        if (matchedExpectation) {
+          activeMode = matchedExpectation.responseMode || 'basic';
+          activeResponseType = matchedExpectation.responseType || 'application/json';
+          activeResponseBasic = matchedExpectation.responseBasic;
+          activeResponseAdvanced = matchedExpectation.responseAdvanced;
+          activeStatusCode = matchedExpectation.statusCode || 200;
+          console.log(`[Group ${groupId}] Matched expectation: ${matchedExpectation.name} (${activeStatusCode})`);
+        }
+        // 5. 预设覆盖：如果有激活的预设且没有匹配到期望
+        else if (matchedRule.activePresetId && matchedRule.responsePresets) {
           const preset = matchedRule.responsePresets.find(p => p.id === matchedRule.activePresetId);
           if (preset) {
             activeMode = preset.responseMode || 'basic';
@@ -217,7 +375,7 @@ function startGroupServer(rawGroupId, port, prefix) {
           }
         }
 
-        // 5. 生成响应数据（核心逻辑：区分基础模式和高级模式）
+        // 6. 生成响应数据（核心逻辑：区分基础模式和高级模式）
         try {
           let responseData;
 
@@ -230,7 +388,8 @@ function startGroupServer(rawGroupId, port, prefix) {
                 body: req.body,
                 headers: req.headers,
                 method: req.method,
-                path: req.path
+                path: req.path,
+                params: pathParams
               },
               Mock,
               console
@@ -276,7 +435,19 @@ function startGroupServer(rawGroupId, port, prefix) {
                 res.status(500).json({ error: 'Failed to read response file', message: e.message });
               }
             } else {
-              const bodyStr = activeResponseBasic || '{}';
+              let bodyStr = activeResponseBasic || '{}';
+
+              // 基础模式 Mock.js 支持：若开关启用且为 JSON 类型，则通过 Mock.mock() 处理
+              if (mockjsEnabled && contentType.includes('json')) {
+                try {
+                  const parsed = JSON.parse(bodyStr);
+                  bodyStr = JSON.stringify(Mock.mock(parsed));
+                } catch (e) {
+                  // JSON 解析失败则原样返回
+                  console.warn('[Mock.js] Failed to process basic response:', e.message);
+                }
+              }
+
               res.status(activeStatusCode).send(bodyStr);
             }
           }
@@ -287,7 +458,82 @@ function startGroupServer(rawGroupId, port, prefix) {
         }
 
       } else {
-        res.status(404).json({ error: `No rule matched ${method} ${url}` });
+        // 代理录制：无规则匹配时，若代理启用则转发请求
+        const groupConfig = targetGroup.config;
+        if (groupConfig && groupConfig.proxyEnabled && groupConfig.proxyTarget) {
+          try {
+            const proxyTarget = groupConfig.proxyTarget.replace(/\/$/, '');
+            const proxyUrl = proxyTarget + url;
+            console.log(`[Group ${groupId}] Proxy: ${method} ${proxyUrl}`);
+
+            const parsed = new URL(proxyUrl);
+            const httpModule = parsed.protocol === 'https:' ? https : http;
+            const proxyHeaders = { ...req.headers };
+            delete proxyHeaders.host;
+
+            const proxyReq = httpModule.request({
+              hostname: parsed.hostname,
+              port: parsed.port,
+              path: parsed.pathname + parsed.search,
+              method: method,
+              headers: proxyHeaders,
+            }, (proxyRes) => {
+              const chunks = [];
+              proxyRes.on('data', chunk => chunks.push(chunk));
+              proxyRes.on('end', () => {
+                const body = Buffer.concat(chunks);
+                const contentType = proxyRes.headers['content-type'] || 'application/json';
+
+                // 返回代理响应
+                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                res.end(body);
+
+                // 自动录制为新 Mock 规则（限制最多 50 条自动录制）
+                const recordedCount = targetGroup.children.filter(r => r.name && r.name.startsWith('[录制]')).length;
+                if (recordedCount < 50 && contentType.includes('json') || contentType.includes('text')) {
+                  const now = Date.now();
+                  const newRule = {
+                    id: now,
+                    name: `[录制] ${method} ${url}`,
+                    active: true,
+                    method: method,
+                    url: url,
+                    delay: 0,
+                    createdAt: now,
+                    updatedAt: now,
+                    headers: [],
+                    params: [],
+                    body: { type: 'none', raw: '', formData: [] },
+                    responseHeaders: [],
+                    responseMode: 'basic',
+                    responseType: contentType.split(';')[0].trim(),
+                    responseBasic: body.toString('utf-8'),
+                    responseAdvanced: '',
+                  };
+                  targetGroup.children.push(newRule);
+                  saveGroups(groups);
+                  console.log(`[Group ${groupId}] Recorded: ${method} ${url}`);
+                }
+              });
+            });
+
+            proxyReq.on('error', (e) => {
+              console.error('[Proxy] Error:', e.message);
+              res.status(502).json({ error: 'Proxy request failed', message: e.message });
+            });
+
+            // 转发请求体
+            if (req.body && method !== 'GET' && method !== 'HEAD') {
+              const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+              proxyReq.write(bodyStr);
+            }
+            proxyReq.end();
+          } catch (e) {
+            res.status(502).json({ error: 'Proxy error', message: e.message });
+          }
+        } else {
+          res.status(404).json({ error: `No rule matched ${method} ${url}` });
+        }
       }
     });
 
@@ -411,6 +657,38 @@ function saveEnvironments(environments) {
   }
 }
 
+/* ==================== 测试用例 CRUD ==================== */
+
+function getTestCases() {
+  const doc = utools.db.get(TESTCASES_DB_KEY);
+  return doc ? doc.data : [];
+}
+
+function saveTestCases(testcases) {
+  const doc = utools.db.get(TESTCASES_DB_KEY);
+  if (doc) {
+    utools.db.put({ _id: TESTCASES_DB_KEY, data: testcases, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: TESTCASES_DB_KEY, data: testcases });
+  }
+}
+
+/* ==================== 测试套件 CRUD ==================== */
+
+function getTestSuites() {
+  const doc = utools.db.get(TESTSUITES_DB_KEY);
+  return doc ? doc.data : [];
+}
+
+function saveTestSuites(suites) {
+  const doc = utools.db.get(TESTSUITES_DB_KEY);
+  if (doc) {
+    utools.db.put({ _id: TESTSUITES_DB_KEY, data: suites, _rev: doc._rev });
+  } else {
+    utools.db.put({ _id: TESTSUITES_DB_KEY, data: suites });
+  }
+}
+
 /* ==================== Admin 管理服务器 ==================== */
 
 /** Admin Express 应用实例 */
@@ -508,6 +786,78 @@ adminApp.post('/_admin/environment/delete', (req, res) => {
   const environments = getEnvironments().filter(e => e.id !== id);
   saveEnvironments(environments);
   res.json({ success: true, data: environments });
+});
+
+/* --- 测试用例 API --- */
+
+/** GET /_admin/testcases - 获取所有测试用例 */
+adminApp.get('/_admin/testcases', (req, res) => {
+  res.json(getTestCases());
+});
+
+/** POST /_admin/testcases - 保存所有测试用例 */
+adminApp.post('/_admin/testcases', (req, res) => {
+  saveTestCases(req.body);
+  res.json({ success: true });
+});
+
+/** POST /_admin/testcase/save - 创建/更新测试用例 */
+adminApp.post('/_admin/testcase/save', (req, res) => {
+  const tc = req.body;
+  const testcases = getTestCases();
+  const idx = testcases.findIndex(t => t.id === tc.id);
+  if (idx !== -1) {
+    testcases[idx] = { ...testcases[idx], ...tc, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    testcases.push({ ...tc, id: now, createdAt: now, updatedAt: now });
+  }
+  saveTestCases(testcases);
+  res.json({ success: true, data: testcases });
+});
+
+/** POST /_admin/testcase/delete - 删除测试用例 */
+adminApp.post('/_admin/testcase/delete', (req, res) => {
+  const { id } = req.body;
+  const testcases = getTestCases().filter(t => t.id !== id);
+  saveTestCases(testcases);
+  res.json({ success: true, data: testcases });
+});
+
+/* --- 测试套件 API --- */
+
+/** GET /_admin/testsuites - 获取所有测试套件 */
+adminApp.get('/_admin/testsuites', (req, res) => {
+  res.json(getTestSuites());
+});
+
+/** POST /_admin/testsuites - 保存所有测试套件 */
+adminApp.post('/_admin/testsuites', (req, res) => {
+  saveTestSuites(req.body);
+  res.json({ success: true });
+});
+
+/** POST /_admin/testsuite/save - 创建/更新测试套件 */
+adminApp.post('/_admin/testsuite/save', (req, res) => {
+  const suite = req.body;
+  const suites = getTestSuites();
+  const idx = suites.findIndex(s => s.id === suite.id);
+  if (idx !== -1) {
+    suites[idx] = { ...suites[idx], ...suite, updatedAt: Date.now() };
+  } else {
+    const now = Date.now();
+    suites.push({ ...suite, id: now, createdAt: now, updatedAt: now });
+  }
+  saveTestSuites(suites);
+  res.json({ success: true, data: suites });
+});
+
+/** POST /_admin/testsuite/delete - 删除测试套件 */
+adminApp.post('/_admin/testsuite/delete', (req, res) => {
+  const { id } = req.body;
+  const suites = getTestSuites().filter(s => s.id !== id);
+  saveTestSuites(suites);
+  res.json({ success: true, data: suites });
 });
 
 /** GET /_admin/projects - 获取所有项目 */

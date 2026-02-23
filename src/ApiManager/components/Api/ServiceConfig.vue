@@ -44,18 +44,13 @@ const ADMIN_API = ref('http://localhost:3000/_admin/service');
 
 /**
  * 表单数据，包含 Mock 服务配置和真实接口地址配置
- * @property {number} port - Mock 服务端口
- * @property {string} prefix - Mock 接口前缀
- * @property {boolean} running - 服务是否正在运行
- * @property {string} [realProtocol] - 真实接口协议（http/https）
- * @property {string} [realHost] - 真实接口主机地址
- * @property {string} [realPort] - 真实接口端口
- * @property {string} [realPrefix] - 真实接口前缀
  */
 const formData = ref<ServiceConfig>({
   port: 3000,
   prefix: '',
-  running: false
+  running: false,
+  proxyEnabled: false,
+  proxyTarget: '',
 });
 
 /** 计算属性：服务是否正在运行 */
@@ -105,6 +100,8 @@ watch(() => props.group, async (newGroup) => {
       realHost: newGroup.config?.realHost || '',
       realPort: newGroup.config?.realPort || '',
       realPrefix: newGroup.config?.realPrefix || '',
+      proxyEnabled: newGroup.config?.proxyEnabled || false,
+      proxyTarget: newGroup.config?.proxyTarget || '',
     };
     await syncStatus();
   }
@@ -351,6 +348,34 @@ const handleStop = async () => {
         <el-icon class="warn-icon" style="color: #67C23A"><CircleCheck /></el-icon>
         <div class="warn-content" style="color: #67C23A">
           预览地址：{{ realUrlPreview }}
+        </div>
+      </div>
+    </div>
+
+    <!-- 代理录制配置 -->
+    <div class="config-header" style="margin-top: 12px">
+      <span class="title">代理录制</span>
+    </div>
+    <div class="config-card">
+      <div class="form-row">
+        <label>启用代理</label>
+        <el-switch v-model="formData.proxyEnabled" @change="saveToLocal" />
+      </div>
+
+      <div class="form-row">
+        <label>目标地址</label>
+        <el-input
+            v-model="formData.proxyTarget"
+            placeholder="如 http://api.example.com:8080"
+            :disabled="!formData.proxyEnabled"
+            @change="saveToLocal"
+        />
+      </div>
+
+      <div class="warning-box">
+        <el-icon class="warn-icon"><Warning /></el-icon>
+        <div class="warn-content">
+          启用后，当 Mock 服务没有匹配到规则时，请求将被转发到目标服务器，并自动将响应录制为新的 Mock 规则（上限 50 条）。录制的规则标记为 [录制]。
         </div>
       </div>
     </div>

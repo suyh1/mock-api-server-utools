@@ -4,7 +4,7 @@
  */
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue';
-import { Connection, DocumentCopy, Setting, Briefcase, FolderOpened, Tickets, Operation, Promotion, DataLine, Collection, Document, MoreFilled } from '@element-plus/icons-vue';
+import { Connection, DocumentCopy, Setting, Briefcase, FolderOpened, Tickets, Operation, Promotion, DataLine, Collection, Document, MoreFilled, List } from '@element-plus/icons-vue';
 import type { Component } from 'vue';
 import { settingsKey, type SidebarModuleKey } from '@/composables/useSettings';
 
@@ -27,6 +27,7 @@ const allModules: Record<SidebarModuleKey, NavItem> = {
   doc: { key: 'doc', label: '文档', icon: Document },
   log: { key: 'log', label: '日志', icon: Tickets },
   websocket: { key: 'websocket', label: 'WS', icon: Promotion },
+  testrunner: { key: 'testrunner', label: '测试', icon: List },
 };
 
 /** 从设置中读取一级入口 */

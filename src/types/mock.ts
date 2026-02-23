@@ -33,6 +33,7 @@ export interface MockRule {
     realUrl?: string;              // 兼容旧数据（废弃，改用 realConfig）
     realConfig?: RealUrlConfig;    // 接口级别的真实地址覆盖配置
     delay: number;
+    delayMax?: number;             // 延迟最大值（与 delay 组成范围，未设置时为固定延迟）
     createdAt?: number;            // 创建时间
     updatedAt?: number;            // 最后更新时间
 
@@ -50,6 +51,9 @@ export interface MockRule {
     responseFile?: string;           // 二进制类型的本地文件路径
     responsePresets?: ResponsePreset[];
     activePresetId?: number;           // undefined = 使用默认响应
+    mockjsEnabled?: boolean;         // 基础模式是否启用 Mock.js 处理
+    expectations?: MockExpectation[]; // 条件响应（Mock 期望）列表
+    assertions?: ResponseAssertion[]; // 响应断言列表
 }
 
 export interface ServiceConfig {
@@ -61,6 +65,9 @@ export interface ServiceConfig {
     realHost?: string;      // IP 或域名
     realPort?: string;      // 端口
     realPrefix?: string;    // 接口前缀
+    // 代理录制配置
+    proxyEnabled?: boolean;  // 是否启用代理录制
+    proxyTarget?: string;    // 代理目标地址
 }
 
 export interface MockGroup {
@@ -233,4 +240,108 @@ export interface WsClientInfo {
     clientId: string;
     clientIp: string;
     connectedAt: number;
+}
+
+// ==================== 条件响应（Mock 期望） ====================
+
+/** 条件来源 */
+export type ConditionSource = 'query' | 'header' | 'body' | 'pathParam';
+
+/** 条件操作符 */
+export type ConditionOperator = 'equals' | 'contains' | 'regex' | 'exists' | 'gt' | 'lt';
+
+/** 期望条件 */
+export interface ExpectationCondition {
+    source: ConditionSource;
+    key: string;          // 参数名（body 使用 JSON path，如 data.id）
+    operator: ConditionOperator;
+    value: string;        // 对比值（exists 操作符时可为空）
+}
+
+/** Mock 期望（条件响应） */
+export interface MockExpectation {
+    id: number;
+    name: string;
+    conditions: ExpectationCondition[];
+    statusCode: number;
+    responseMode: ResponseMode;
+    responseType: string;
+    responseBasic: string;
+    responseAdvanced: string;
+}
+
+// ==================== 响应断言 ====================
+
+/** 断言目标 */
+export type AssertionTarget = 'status' | 'body' | 'header' | 'responseTime';
+
+/** 响应断言 */
+export interface ResponseAssertion {
+    id: number;
+    target: AssertionTarget;
+    key?: string;           // header 名或 body JSON path
+    operator: ConditionOperator;
+    value: string;
+}
+
+/** 断言结果 */
+export interface AssertionResult {
+    assertion: ResponseAssertion;
+    passed: boolean;
+    actual: string;
+    message: string;
+}
+
+// ==================== 测试用例 ====================
+
+/** 测试用例 */
+export interface TestCase {
+    id: number;
+    name: string;
+    ruleId: number;
+    groupId: number;
+    method: HttpMethod;
+    url: string;
+    headers?: KeyValueItem[];
+    params?: KeyValueItem[];
+    body?: BodyContent;
+    assertions: ResponseAssertion[];
+    createdAt: number;
+    updatedAt: number;
+}
+
+// ==================== 测试套件 ====================
+
+/** 测试套件 */
+export interface TestSuite {
+    id: number;
+    name: string;
+    description?: string;
+    testCaseIds: number[];
+    createdAt: number;
+    updatedAt: number;
+}
+
+/** 单个测试用例运行结果 */
+export interface TestCaseResult {
+    testCaseId: number;
+    testCaseName: string;
+    passed: boolean;
+    status: number;
+    duration: number;
+    assertionResults: AssertionResult[];
+    error?: string;
+}
+
+/** 测试套件运行结果 */
+export interface TestSuiteResult {
+    suiteId: number;
+    suiteName: string;
+    startTime: number;
+    endTime: number;
+    totalDuration: number;
+    totalCases: number;
+    passedCases: number;
+    failedCases: number;
+    results: TestCaseResult[];
 }

@@ -3,13 +3,13 @@ import type { InjectionKey } from 'vue';
 import type { HttpMethod } from '@/types/mock';
 
 /** 所有可配置的侧边栏模块 key */
-export type SidebarModuleKey = 'dashboard' | 'project' | 'api' | 'template' | 'scenario' | 'tools' | 'environment' | 'doc' | 'log' | 'websocket';
+export type SidebarModuleKey = 'dashboard' | 'project' | 'api' | 'template' | 'scenario' | 'tools' | 'environment' | 'doc' | 'log' | 'websocket' | 'testrunner';
 
 /** 默认一级入口 */
 export const DEFAULT_PRIMARY: SidebarModuleKey[] = ['dashboard', 'api', 'template', 'scenario', 'tools'];
 
 /** 默认更多面板 */
-export const DEFAULT_MORE: SidebarModuleKey[] = ['project', 'environment', 'doc', 'log', 'websocket'];
+export const DEFAULT_MORE: SidebarModuleKey[] = ['project', 'environment', 'doc', 'log', 'websocket', 'testrunner'];
 
 export interface AppSettings {
   editorFontSize: number;

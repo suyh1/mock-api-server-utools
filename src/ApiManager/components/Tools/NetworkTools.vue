@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import CodeEditor from '../CodeEditor.vue';
 import { copyText } from './tools-utils';
 import type { MockGroup, MockRule } from '@/types/mock';
+import { tokenizeCurl as _tokenizeCurl } from '@/utils/curlParser';
 
 defineProps<{
   activeTool: string;
@@ -201,42 +202,8 @@ function parseCurl() {
   generateCurlCode();
 }
 
-function tokenizeCurl(input: string): string[] {
-  const tokens: string[] = [];
-  let i = 0;
-  while (i < input.length) {
-    while (i < input.length && /\s/.test(input[i])) i++;
-    if (i >= input.length) break;
-
-    if (input[i] === "'" || input[i] === '"') {
-      const quote = input[i++];
-      let token = '';
-      while (i < input.length && input[i] !== quote) {
-        if (input[i] === '\\' && quote === '"') { i++; token += input[i] || ''; }
-        else token += input[i];
-        i++;
-      }
-      i++; // skip closing quote
-      tokens.push(token);
-    } else if (input[i] === '$' && input[i + 1] === "'") {
-      // $'...' ANSI-C quoting
-      i += 2;
-      let token = '';
-      while (i < input.length && input[i] !== "'") { token += input[i++]; }
-      i++;
-      tokens.push(token);
-    } else {
-      let token = '';
-      while (i < input.length && !/\s/.test(input[i])) {
-        if (input[i] === '\\') { i++; token += input[i] || ''; }
-        else token += input[i];
-        i++;
-      }
-      tokens.push(token);
-    }
-  }
-  return tokens;
-}
+// 使用从 curlParser.ts 导入的 tokenizeCurl
+const tokenizeCurl = _tokenizeCurl;
 
 function generateCurlCode() {
   const method = curlMethod.value;

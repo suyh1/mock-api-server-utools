@@ -33,6 +33,9 @@ const emit = defineEmits<{
   (e: 'rule-copy', rule: MockRule, targetGroupId: number): void;
   (e: 'rule-move', rule: MockRule, sourceGroup: MockGroup, targetGroupId: number): void;
   (e: 'rule-reorder', group: MockGroup, fromIdx: number, toIdx: number): void;
+  (e: 'rule-clone', rule: MockRule, group: MockGroup): void;
+  (e: 'curl-import', group: MockGroup): void;
+  (e: 'batch-action', action: string, ruleIds: number[]): void;
 }>();
 
 const activeGroupNames = ref<number[]>([]);
@@ -45,8 +48,6 @@ const searchInputRef = ref<HTMLInputElement | null>(null);
 const focusSearch = () => {
   nextTick(() => searchInputRef.value?.focus());
 };
-defineExpose({ focusSearch });
-
 /** 按项目过滤后的分组列表 */
 const projectFilteredGroups = computed(() => {
   if (props.currentProjectId === null) return props.groups;
@@ -162,6 +163,60 @@ const onDragEnd = () => {
   dropTargetId.value = null;
 };
 
+// --- 批量模式 ---
+const batchMode = ref(false);
+const selectedRuleIds = ref<Set<number>>(new Set());
+
+const toggleBatchMode = () => {
+  batchMode.value = !batchMode.value;
+  if (!batchMode.value) selectedRuleIds.value.clear();
+};
+
+const toggleRuleSelection = (ruleId: number) => {
+  if (selectedRuleIds.value.has(ruleId)) {
+    selectedRuleIds.value.delete(ruleId);
+  } else {
+    selectedRuleIds.value.add(ruleId);
+  }
+};
+
+const selectAllInGroup = (group: MockGroup) => {
+  group.children.forEach(r => selectedRuleIds.value.add(r.id));
+};
+
+const deselectAllInGroup = (group: MockGroup) => {
+  group.children.forEach(r => selectedRuleIds.value.delete(r.id));
+};
+
+const isAllSelectedInGroup = (group: MockGroup) => {
+  return group.children.length > 0 && group.children.every(r => selectedRuleIds.value.has(r.id));
+};
+
+const handleBatchAction = (action: string) => {
+  if (selectedRuleIds.value.size === 0) return;
+  emit('batch-action', action, Array.from(selectedRuleIds.value));
+  if (action === 'delete') selectedRuleIds.value.clear();
+};
+
+// --- cURL 导入弹窗 ---
+const showCurlImportDialog = ref(false);
+const curlImportText = ref('');
+const curlImportTargetGroup = ref<MockGroup | null>(null);
+
+const openCurlImport = (group: MockGroup) => {
+  curlImportTargetGroup.value = group;
+  curlImportText.value = '';
+  showCurlImportDialog.value = true;
+};
+
+const confirmCurlImport = () => {
+  if (!curlImportText.value.trim() || !curlImportTargetGroup.value) return;
+  emit('curl-import', curlImportTargetGroup.value);
+  showCurlImportDialog.value = false;
+};
+
+defineExpose({ focusSearch, curlImportText });
+
 // --- 工具方法 ---
 const methodTagType = (method: string) => {
   const map: Record<string, TagType> = {
@@ -181,7 +236,12 @@ if (typeof document !== 'undefined') {
     <!-- 顶部标题栏 -->
     <div class="inner-header">
       <span class="title">接口列表</span>
-      <el-button type="primary" size="small" :icon="Plus" circle @click="$emit('group-add')" title="新建分组" />
+      <div class="header-actions">
+        <el-button :type="batchMode ? 'warning' : 'info'" size="small" plain @click="toggleBatchMode" :title="batchMode ? '退出批量模式' : '批量操作'">
+          {{ batchMode ? '退出' : '批量' }}
+        </el-button>
+        <el-button type="primary" size="small" :icon="Plus" circle @click="$emit('group-add')" title="新建分组" />
+      </div>
     </div>
 
     <!-- 项目选择器 -->
@@ -227,6 +287,9 @@ if (typeof document !== 'undefined') {
                     <el-button link type="primary" @click.stop="$emit('rule-add', group)" title="新增接口">
                       <el-icon><Plus /></el-icon>
                     </el-button>
+                    <el-button link type="info" @click.stop="openCurlImport(group)" title="从 cURL 导入">
+                      <el-icon><DocumentCopy /></el-icon>
+                    </el-button>
                     <el-button link type="warning" @click.stop="$emit('group-rename', group)" title="重命名">
                       <el-icon><Edit /></el-icon>
                     </el-button>
@@ -238,21 +301,31 @@ if (typeof document !== 'undefined') {
               </el-tooltip>
             </template>
 
+            <!-- 批量模式工具栏 -->
+            <div v-if="batchMode" class="batch-group-bar">
+              <el-button link size="small" @click="isAllSelectedInGroup(group) ? deselectAllInGroup(group) : selectAllInGroup(group)">
+                {{ isAllSelectedInGroup(group) ? '取消全选' : '全选' }}
+              </el-button>
+            </div>
+
             <!-- 接口列表（支持拖拽排序和右键菜单） -->
             <div
               v-for="rule in group.children"
               :key="rule.id"
               class="rule-item"
-              :class="{ active: currentRuleId === rule.id, 'drop-target': dropTargetId === rule.id, disabled: !rule.active }"
-              draggable="true"
-              @click="$emit('rule-select', rule)"
+              :class="{ active: currentRuleId === rule.id && !batchMode, 'drop-target': dropTargetId === rule.id, disabled: !rule.active, selected: batchMode && selectedRuleIds.has(rule.id) }"
+              :draggable="!batchMode"
+              @click="batchMode ? toggleRuleSelection(rule.id) : $emit('rule-select', rule)"
               @contextmenu="onRuleContextMenu($event, group, rule)"
-              @dragstart="onDragStart($event, group, rule)"
-              @dragover="onDragOver($event, rule)"
+              @dragstart="!batchMode && onDragStart($event, group, rule)"
+              @dragover="!batchMode && onDragOver($event, rule)"
               @dragleave="onDragLeave"
-              @drop="onDrop($event, group, rule)"
+              @drop="!batchMode && onDrop($event, group, rule)"
               @dragend="onDragEnd"
             >
+              <!-- 批量模式复选框 -->
+              <el-checkbox v-if="batchMode" :model-value="selectedRuleIds.has(rule.id)" @click.stop @change="toggleRuleSelection(rule.id)" size="small" style="margin-right: 6px" />
+
               <div class="rule-left">
                 <el-tag size="small" :type="methodTagType(rule.method)" effect="dark" class="method-tag">{{ rule.method }}</el-tag>
                 <div class="rule-info">
@@ -260,7 +333,7 @@ if (typeof document !== 'undefined') {
                   <span class="rule-url" :class="{ 'is-sub': !!rule.name }" :title="rule.url">{{ rule.url }}</span>
                 </div>
               </div>
-              <div class="rule-actions">
+              <div v-if="!batchMode" class="rule-actions">
                 <el-button link type="danger" size="small" class="del-btn" @click.stop="$emit('rule-delete', group, rule)" title="删除接口">
                   <el-icon><Delete /></el-icon>
                 </el-button>
@@ -285,6 +358,9 @@ if (typeof document !== 'undefined') {
         class="context-menu"
         :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       >
+        <div class="context-menu-item" @click="() => { if (contextGroup && contextRule) { $emit('rule-clone', contextRule, contextGroup); closeContextMenu(); } }">
+          <el-icon><DocumentCopy /></el-icon> 复制接口
+        </div>
         <div class="context-menu-item" @click="openCopyMoveDialog('copy')">
           <el-icon><DocumentCopy /></el-icon> 复制到其他分组
         </div>
@@ -297,6 +373,14 @@ if (typeof document !== 'undefined') {
         </div>
       </div>
     </Teleport>
+
+    <!-- 批量操作栏 -->
+    <div v-if="batchMode && selectedRuleIds.size > 0" class="batch-actions-bar">
+      <span class="batch-count">已选 {{ selectedRuleIds.size }} 个</span>
+      <el-button type="success" size="small" plain @click="handleBatchAction('enable')">启用</el-button>
+      <el-button type="warning" size="small" plain @click="handleBatchAction('disable')">禁用</el-button>
+      <el-button type="danger" size="small" plain @click="handleBatchAction('delete')">删除</el-button>
+    </div>
 
     <!-- 复制/移动对话框 -->
     <el-dialog v-model="showCopyMoveDialog" :title="copyMoveMode === 'copy' ? '复制到分组' : '移动到分组'" width="360px" destroy-on-close>
@@ -311,6 +395,20 @@ if (typeof document !== 'undefined') {
       <template #footer>
         <el-button @click="showCopyMoveDialog = false">取消</el-button>
         <el-button type="primary" @click="confirmCopyMove" :disabled="!targetGroupId">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- cURL 导入弹窗 -->
+    <el-dialog v-model="showCurlImportDialog" title="从 cURL 导入接口" width="500px" destroy-on-close>
+      <el-input
+        v-model="curlImportText"
+        type="textarea"
+        :rows="8"
+        placeholder="粘贴 cURL 命令，例如:&#10;curl -X POST https://api.example.com/users \&#10;  -H 'Content-Type: application/json' \&#10;  -d '{&quot;name&quot;: &quot;test&quot;}'"
+      />
+      <template #footer>
+        <el-button @click="showCurlImportDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmCurlImport" :disabled="!curlImportText.trim()">导入</el-button>
       </template>
     </el-dialog>
   </el-aside>
@@ -501,5 +599,39 @@ if (typeof document !== 'undefined') {
   height: 1px;
   background: var(--border-color, #e5e6eb);
   margin: 4px 0;
+}
+
+/* 头部操作按钮组 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 批量模式选中 */
+.rule-item.selected {
+  background: var(--primary-bg);
+  border-color: var(--primary-color);
+}
+
+/* 批量操作栏 */
+.batch-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  flex-shrink: 0;
+}
+.batch-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-right: auto;
+}
+.batch-group-bar {
+  padding: 2px 8px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

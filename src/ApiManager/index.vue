@@ -26,12 +26,13 @@ import WsPanel from './components/WebSocket/WsPanel.vue';
 import DashboardPanel from './components/Dashboard/DashboardPanel.vue';
 import EnvironmentPanel from './components/Environment/EnvironmentPanel.vue';
 import DocPanel from './components/Doc/DocPanel.vue';
+import TestRunnerPanel from './components/TestRunner/TestRunnerPanel.vue';
 import GuideDialog from './components/GuideDialog.vue';
 import { useSettings, settingsKey } from '@/composables/useSettings';
 import { useEnvironments, environmentsKey } from '@/composables/useEnvironments';
 
 /** 需要显示使用指南的 tab */
-const guideTabs = new Set(['dashboard', 'project', 'api', 'template', 'scenario', 'environment', 'doc', 'log', 'websocket', 'tools']);
+const guideTabs = new Set(['dashboard', 'project', 'api', 'template', 'scenario', 'environment', 'doc', 'log', 'websocket', 'tools', 'testrunner']);
 
 /** 全局设置（持久化到 localStorage） */
 const settings = useSettings();
@@ -103,6 +104,7 @@ const currentTitle = computed(() => {
     websocket: 'WebSocket 管理',
     environment: '环境变量',
     doc: '接口文档',
+    testrunner: '测试运行器',
     settings: '全局设置',
   };
   return map[activeTab.value] || '应用';
@@ -285,23 +287,53 @@ const currentTitle = computed(() => {
             </template>
             <!-- 环境 -->
             <template v-if="activeTab === 'environment'">
-              <h4>📖 使用指南</h4>
+              <h4>📖 什么是环境变量</h4>
+              <p>环境变量用于管理不同部署环境（开发、测试、生产）下的配置差异。通过 <code v-pre>{{变量名}}</code> 语法在接口中引用变量，切换环境时所有引用自动替换为对应值，无需逐个修改接口配置。</p>
+
+              <h4>🚀 完整使用步骤</h4>
               <ol>
-                <li>点击「新建环境」创建一个环境（如：开发、测试、生产）</li>
-                <li>在右侧表格中添加变量，填写变量名和值</li>
-                <li>点击「激活」按钮启用该环境，或在页面顶部下拉框快速切换</li>
-                <li>在接口管理中，URL / 请求头 / 请求体中使用 <code v-pre>{{变量名}}</code> 引用变量</li>
-                <li>执行测试时，变量会自动替换为当前激活环境的值</li>
+                <li><b>创建环境：</b>点击右上角「新建环境」按钮，输入环境名称（如"开发环境"、"测试环境"）。系统会自动分配颜色标识</li>
+                <li><b>添加变量：</b>在左侧列表中点击刚创建的环境，右侧会出现变量编辑表格。点击「添加变量」填写变量名（如 <code>baseUrl</code>）和对应的值</li>
+                <li><b>启用/禁用单个变量：</b>每个变量左侧有开关，关闭后该变量不参与替换（方便临时调试）</li>
+                <li><b>激活环境：</b>在左侧环境卡片上点击「激活」按钮，该环境变为当前生效环境（同一时间只能有一个激活环境）</li>
+                <li><b>在接口中使用：</b>切换到「接口」模块，在 URL、请求头、请求体中使用 <code v-pre>{{变量名}}</code> 引用变量</li>
+                <li><b>执行测试：</b>点击「请求 Mock」或「请求真实接口」时，所有 <code v-pre>{{变量名}}</code> 会被自动替换为当前激活环境中对应的值</li>
+                <li><b>快速切换：</b>页面右上角的下拉框可以快速切换激活环境，无需回到本页面</li>
               </ol>
-              <h4>💡 示例</h4>
+
+              <h4>📝 变量语法规则</h4>
+              <ul>
+                <li>语法格式：<code v-pre>{{变量名}}</code>，变量名仅支持字母、数字和下划线</li>
+                <li>替换范围：接口 URL、请求头的 key 和 value、JSON 请求体</li>
+                <li>如果变量名在当前环境中不存在或已禁用，<code v-pre>{{变量名}}</code> 原样保留不替换</li>
+                <li>未激活任何环境时，所有变量引用保持原样不替换</li>
+              </ul>
+
+              <h4>💡 典型使用场景</h4>
               <table>
-                <thead><tr><th>变量名</th><th>开发环境</th><th>生产环境</th></tr></thead>
+                <thead><tr><th>变量名</th><th>开发环境</th><th>生产环境</th><th>用途</th></tr></thead>
                 <tbody>
-                  <tr><td><code>baseUrl</code></td><td>http://localhost:3000</td><td>https://api.example.com</td></tr>
-                  <tr><td><code>token</code></td><td>dev-token-123</td><td>prod-token-456</td></tr>
+                  <tr><td><code>baseUrl</code></td><td>http://localhost:3000</td><td>https://api.example.com</td><td>接口基础地址</td></tr>
+                  <tr><td><code>token</code></td><td>dev-token-123</td><td>prod-token-456</td><td>认证令牌</td></tr>
+                  <tr><td><code>userId</code></td><td>1</td><td>10086</td><td>测试用户 ID</td></tr>
+                  <tr><td><code>apiVersion</code></td><td>v1</td><td>v2</td><td>API 版本号</td></tr>
                 </tbody>
               </table>
-              <p>接口 URL 填写 <code v-pre>{{baseUrl}}/api/users</code>，切换环境后自动替换为对应地址。</p>
+
+              <h4>🔧 实际操作示例</h4>
+              <p><b>场景：</b>同一个接口需要在开发和生产两个环境间切换。</p>
+              <ol>
+                <li>创建「开发环境」，添加变量 <code>baseUrl</code> = <code>http://localhost:3000</code>，<code>token</code> = <code>dev-123</code></li>
+                <li>创建「生产环境」，添加变量 <code>baseUrl</code> = <code>https://api.prod.com</code>，<code>token</code> = <code>prod-456</code></li>
+                <li>在接口管理中，将真实接口地址的主机配置为 <code v-pre>{{baseUrl}}</code></li>
+                <li>在请求头中添加 <code>Authorization</code> = <code v-pre>Bearer {{token}}</code></li>
+                <li>激活「开发环境」后点击测试，请求发送到 <code>http://localhost:3000</code>，携带 <code>Bearer dev-123</code></li>
+                <li>切换激活到「生产环境」再次测试，请求自动变为 <code>https://api.prod.com</code>，携带 <code>Bearer prod-456</code></li>
+              </ol>
+
+              <h4>📦 导入/导出</h4>
+              <p>点击「导出」可将所有环境配置保存为 JSON 文件，方便备份或分享给同事。点击「导入」加载 JSON 文件，导入时会自动生成新 ID 避免冲突。</p>
+              <p class="guide-tip">💡 右上角的环境下拉框只在创建了至少一个环境后才会出现。选择「清除」可取消激活所有环境。</p>
             </template>
             <!-- 文档 -->
             <template v-if="activeTab === 'doc'">
@@ -335,6 +367,27 @@ const currentTitle = computed(() => {
                 <li><b>请求重放</b> — 点击「重放」按钮重新发起请求并对比响应差异</li>
               </ul>
               <p class="guide-tip">💡 日志最多保留 200 条，超出后自动移除最早的记录。</p>
+            </template>
+            <!-- 测试运行器 -->
+            <template v-if="activeTab === 'testrunner'">
+              <h4>使用步骤</h4>
+              <ol>
+                <li>在「接口」模块中编辑接口，点击「保存为用例」将当前配置保存为测试用例</li>
+                <li>在本页面创建测试套件，将测试用例添加到套件中</li>
+                <li>点击「运行套件」顺序执行所有用例</li>
+                <li>查看结果汇总：通过/失败数量、每个用例的断言详情</li>
+              </ol>
+              <h4>断言说明</h4>
+              <table>
+                <thead><tr><th>目标</th><th>说明</th></tr></thead>
+                <tbody>
+                  <tr><td>状态码</td><td>验证 HTTP 响应状态码</td></tr>
+                  <tr><td>响应体</td><td>通过 JSON path 验证响应体内容</td></tr>
+                  <tr><td>响应头</td><td>验证指定响应头的值</td></tr>
+                  <tr><td>响应时间</td><td>验证请求耗时（毫秒）</td></tr>
+                </tbody>
+              </table>
+              <p class="guide-tip">测试结果仅保存在内存中，不会持久化到数据库。</p>
             </template>
             <!-- WebSocket -->
             <template v-if="activeTab === 'websocket'">
@@ -432,6 +485,11 @@ ws.send('ping');  // → 收到: pong</pre>
           <!-- 接口文档面板 -->
           <div v-if="activeTab === 'doc'" class="full-height-module">
             <DocPanel />
+          </div>
+
+          <!-- 测试运行器面板 -->
+          <div v-if="activeTab === 'testrunner'" class="full-height-module">
+            <TestRunnerPanel />
           </div>
 
           <!-- 全局设置 -->

@@ -20,7 +20,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import GroupSidebar from './GroupSidebar.vue';
 import RuleEditor from './RuleEditor.vue';
 import ServiceConfigPanel from './ServiceConfig.vue';
-import type { MockGroup, MockRule, TestResultFile, TestResultMeta, Project } from '@/types/mock';
+import type { MockGroup, MockRule, TestResultFile, TestResultMeta, Project, HttpMethod } from '@/types/mock';
+import { parseCurl } from '@/utils/curlParser';
 import { settingsKey } from '@/composables/useSettings';
 import { useRequestLogs } from '@/composables/useRequestLogs';
 import { environmentsKey } from '@/composables/useEnvironments';
@@ -395,6 +396,135 @@ const handleReorderRule = (group: MockGroup, fromIdx: number, toIdx: number) => 
   saveData();
 };
 
+/** 克隆接口（在同一分组内创建副本） */
+const handleCloneRule = (rule: MockRule, group: MockGroup) => {
+  const realGroup = groups.value.find(g => g.id === group.id);
+  if (!realGroup) return;
+  const now = Date.now();
+  const cloned: MockRule = {
+    ...JSON.parse(JSON.stringify(rule)),
+    id: now,
+    name: (rule.name || rule.url) + ' (副本)',
+    createdAt: now,
+    updatedAt: now,
+  };
+  // 插入到原规则后方
+  const idx = realGroup.children.findIndex(r => r.id === rule.id);
+  realGroup.children.splice(idx + 1, 0, cloned);
+  handleSelectRule(cloned);
+  saveData();
+  ElMessage.success('接口已复制');
+};
+
+/** 从 cURL 导入接口 */
+const handleCurlImport = (group: MockGroup) => {
+  const curlText = sidebarRef.value?.curlImportText;
+  if (!curlText) return;
+  const parsed = parseCurl(curlText);
+  if (!parsed) {
+    ElMessage.error('无法解析 cURL 命令');
+    return;
+  }
+
+  const realGroup = groups.value.find(g => g.id === group.id);
+  if (!realGroup) return;
+
+  // 从 URL 提取路径
+  let urlPath = parsed.url;
+  try {
+    const urlObj = new URL(parsed.url);
+    urlPath = urlObj.pathname + urlObj.search;
+  } catch {
+    // 如果不是完整 URL，保持原样
+  }
+
+  const validMethods = ['GET', 'POST', 'PUT', 'DELETE'] as const;
+  const method = validMethods.includes(parsed.method as any) ? parsed.method as HttpMethod : 'GET';
+
+  const now = Date.now();
+  const newRule: MockRule = {
+    id: now,
+    name: `导入: ${method} ${urlPath}`,
+    active: true,
+    method,
+    url: urlPath,
+    delay: 0,
+    createdAt: now,
+    updatedAt: now,
+    headers: parsed.headers.filter(h => h.key.toLowerCase() !== 'content-type').map(h => ({ key: h.key, value: h.value })),
+    params: [],
+    body: {
+      type: parsed.body ? 'json' : 'none',
+      raw: parsed.body || '',
+      formData: [],
+    },
+    responseHeaders: [],
+    responseMode: 'basic',
+    responseType: 'application/json',
+    responseBasic: '{\n  "code": 200,\n  "msg": "success"\n}',
+    responseAdvanced: '',
+  };
+
+  realGroup.children.push(newRule);
+  handleSelectRule(newRule);
+  saveData();
+  ElMessage.success('cURL 导入成功');
+};
+
+/** 保存测试用例 */
+const handleSaveTestCase = async (testcase: any) => {
+  // 填充 groupId
+  const group = groups.value.find(g => g.children.some(r => r.id === currentRuleId.value));
+  if (group) testcase.groupId = group.id;
+
+  try {
+    await fetch(`${API_BASE.value}/_admin/testcase/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(testcase),
+    });
+    ElMessage.success('测试用例已保存');
+  } catch {
+    ElMessage.error('保存测试用例失败');
+  }
+};
+
+/** 批量操作处理 */
+const handleBatchAction = (action: string, ruleIds: number[]) => {
+  if (!ruleIds.length) return;
+  const idSet = new Set(ruleIds);
+
+  switch (action) {
+    case 'enable':
+      groups.value.forEach(g => g.children.forEach(r => {
+        if (idSet.has(r.id)) r.active = true;
+      }));
+      saveData();
+      ElMessage.success(`已启用 ${ruleIds.length} 个接口`);
+      break;
+    case 'disable':
+      groups.value.forEach(g => g.children.forEach(r => {
+        if (idSet.has(r.id)) r.active = false;
+      }));
+      saveData();
+      ElMessage.success(`已禁用 ${ruleIds.length} 个接口`);
+      break;
+    case 'delete':
+      ElMessageBox.confirm(`确定批量删除 ${ruleIds.length} 个接口吗？`, '批量删除', { type: 'warning' }).then(() => {
+        groups.value.forEach(g => {
+          g.children = g.children.filter(r => !idSet.has(r.id));
+        });
+        if (currentRuleId.value && idSet.has(currentRuleId.value)) {
+          currentRuleId.value = null;
+          editingRule.value = {};
+        }
+        saveData();
+        ElMessage.success(`已删除 ${ruleIds.length} 个接口`);
+      }).catch(() => {});
+      break;
+  }
+};
+
 // --- 快捷键 ---
 
 const sidebarRef = ref<InstanceType<typeof GroupSidebar> | null>(null);
@@ -728,6 +858,9 @@ onUnmounted(() => {
           @rule-copy="handleCopyRule"
           @rule-move="handleMoveRule"
           @rule-reorder="handleReorderRule"
+          @rule-clone="handleCloneRule"
+          @curl-import="handleCurlImport"
+          @batch-action="handleBatchAction"
       />
       <!-- 拖拽分隔条 -->
       <div class="resize-handle" @mousedown="onDragStart"></div>
@@ -758,6 +891,7 @@ onUnmounted(() => {
           @save="handleSaveRule"
           @copy="handleCopyCurrentUrl"
           @test="handleRunTest"
+          @save-testcase="handleSaveTestCase"
       />
 
       <!-- 空状态提示：未选中任何接口或分组配置时显示 -->
