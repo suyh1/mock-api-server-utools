@@ -12,23 +12,24 @@
  * - 管理深色模式切换逻辑（同步 document.documentElement 的 class）
  */
 <script setup lang="ts">
-import { ref, computed, provide, markRaw, type Ref, type Component } from 'vue';
+import { ref, computed, provide, markRaw, defineAsyncComponent, type Ref, type Component } from 'vue';
 import { UserFilled, Moon, Sunny } from '@element-plus/icons-vue';
 import ActivityBar from './components/ActivityBar.vue';
 import ProjectPanel from './components/Project/ProjectPanel.vue';
 import ServicePanel from './components/Service/ServicePanel.vue';
 import ApiPanel from './components/Api/ApiPanel.vue';
-import TemplateManager from './components/Template/TemplateManager.vue';
-import ToolsPanel from './components/Tools/ToolsPanel.vue';
-import SettingsPanel from './components/Settings/SettingsPanel.vue';
-import LogPanel from './components/Log/LogPanel.vue';
-import ScenarioPanel from './components/Scenario/ScenarioPanel.vue';
-import WsPanel from './components/WebSocket/WsPanel.vue';
-import DashboardPanel from './components/Dashboard/DashboardPanel.vue';
-import EnvironmentPanel from './components/Environment/EnvironmentPanel.vue';
-import DocPanel from './components/Doc/DocPanel.vue';
-import TestRunnerPanel from './components/TestRunner/TestRunnerPanel.vue';
 import GuideDialog from './components/GuideDialog.vue';
+
+const TemplateManager = defineAsyncComponent(() => import('./components/Template/TemplateManager.vue'));
+const ToolsPanel = defineAsyncComponent(() => import('./components/Tools/ToolsPanel.vue'));
+const SettingsPanel = defineAsyncComponent(() => import('./components/Settings/SettingsPanel.vue'));
+const LogPanel = defineAsyncComponent(() => import('./components/Log/LogPanel.vue'));
+const ScenarioPanel = defineAsyncComponent(() => import('./components/Scenario/ScenarioPanel.vue'));
+const WsPanel = defineAsyncComponent(() => import('./components/WebSocket/WsPanel.vue'));
+const DashboardPanel = defineAsyncComponent(() => import('./components/Dashboard/DashboardPanel.vue'));
+const EnvironmentPanel = defineAsyncComponent(() => import('./components/Environment/EnvironmentPanel.vue'));
+const DocPanel = defineAsyncComponent(() => import('./components/Doc/DocPanel.vue'));
+const TestRunnerPanel = defineAsyncComponent(() => import('./components/TestRunner/TestRunnerPanel.vue'));
 import { useSettings, settingsKey } from '@/composables/useSettings';
 import { useEnvironments, environmentsKey } from '@/composables/useEnvironments';
 
@@ -333,7 +334,6 @@ const currentTitle = computed(() => {
 
               <h4>📦 导入/导出</h4>
               <p>点击「导出」可将所有环境配置保存为 JSON 文件，方便备份或分享给同事。点击「导入」加载 JSON 文件，导入时会自动生成新 ID 避免冲突。</p>
-              <p class="guide-tip">💡 未激活任何环境时，分组原有的 config 配置仍然生效，保持向后兼容。</p>
             </template>
             <!-- 文档 -->
             <template v-if="activeTab === 'doc'">

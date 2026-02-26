@@ -81,8 +81,7 @@ export function useEnvironments(): UseEnvironmentsReturn {
       po?.variables?.filter(v => v.enabled).forEach(v => varMap.set(v.key, v.value));
     }
     if (serviceId != null && env.overrides) {
-      // 兼容旧数据中 scope === 'group' 的覆盖
-      const so = env.overrides.find(o => (o.scope === 'service' || o.scope === 'group') && o.targetId === serviceId);
+      const so = env.overrides.find(o => o.scope === 'service' && o.targetId === serviceId);
       so?.variables?.filter(v => v.enabled).forEach(v => varMap.set(v.key, v.value));
     }
 
@@ -108,10 +107,10 @@ export function useEnvironments(): UseEnvironmentsReturn {
       }
     }
 
-    // 第三层：服务覆盖（兼容旧 group scope）
+    // 第三层：服务覆盖
     if (env.overrides) {
       const serviceOverride = env.overrides.find(
-        o => (o.scope === 'service' || o.scope === 'group') && o.targetId === serviceId
+        o => o.scope === 'service' && o.targetId === serviceId
       );
       if (serviceOverride?.serviceConfig) {
         merged = { ...merged, ...stripUndefined(serviceOverride.serviceConfig) };

@@ -30,7 +30,6 @@ export interface MockRule {
     active: boolean;
     method: HttpMethod;
     url: string;
-    realUrl?: string;              // 兼容旧数据（废弃，改用 realConfig）
     realConfig?: RealUrlConfig;    // 接口级别的真实地址覆盖配置
     delay: number;
     delayMax?: number;             // 延迟最大值（与 delay 组成范围，未设置时为固定延迟）
@@ -87,31 +86,12 @@ export interface MockService {
     updatedAt: number;
 }
 
-// ==================== 旧类型（保留用于数据迁移） ====================
-
-/** @deprecated 使用 MockService 替代，仅用于数据迁移兼容 */
-export interface ServiceConfig {
-    port: number;
-    prefix: string;
-    running: boolean; // 前端状态，需与后端同步
-    // 真实接口地址配置（分组级别）
-    realProtocol?: string;  // http | https
-    realHost?: string;      // IP 或域名
-    realPort?: string;      // 端口
-    realPrefix?: string;    // 接口前缀
-    // 代理录制配置
-    proxyEnabled?: boolean;  // 是否启用代理录制
-    proxyTarget?: string;    // 代理目标地址
-}
-
-/** @deprecated 使用 MockService + MockServiceGroup 替代，仅用于数据迁移兼容 */
 export interface MockGroup {
     id: number;
     name: string;
     description?: string;   // 分组描述
     projectId?: number;     // 所属项目 ID，undefined 表示"未分类"
     children: MockRule[];
-    config?: ServiceConfig; // 分组的服务配置
 }
 
 // ==================== 项目管理 ====================
@@ -166,8 +146,8 @@ export interface EnvServiceConfig {
 
 /** 项目/服务级别的覆盖配置 */
 export interface EnvOverride {
-  /** 覆盖层级：project 或 service（兼容旧数据中的 group） */
-  scope: 'project' | 'service' | 'group';
+  /** 覆盖层级：project 或 service */
+  scope: 'project' | 'service';
   /** 关联的项目 ID 或服务 ID */
   targetId: number;
   /** 可选展示名称（便于 UI 辨别） */
