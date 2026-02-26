@@ -43,7 +43,7 @@ function load(): AppSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const saved = { ...defaults, ...JSON.parse(raw) };
-      // 迁移：确保新增的模块出现在侧边栏中
+      // 完整性校验：确保所有模块都出现在侧边栏配置中
       const allKeys = new Set([...saved.sidebarPrimary, ...saved.sidebarMore]);
       for (const key of DEFAULT_PRIMARY) {
         if (!allKeys.has(key)) {

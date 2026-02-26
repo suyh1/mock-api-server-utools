@@ -83,6 +83,8 @@ const interfaceTab = ref('req-header');
 const showMeta = ref(false);
 /** 是否展开真实地址的详细配置（协议/主机/端口/前缀） */
 const showRealDetail = ref(false);
+/** 地址栏当前模式：mock 或 real */
+const addrMode = ref<'mock' | 'real'>('mock');
 
 /**
  * 接口规则数据的双向绑定代理
@@ -857,43 +859,62 @@ onMounted(() => {
               <el-input v-model="rule.name" placeholder="接口名称（选填）" class="url-input" />
               <el-button :type="saveSuccess ? 'info' : 'success'" :icon="Check" @click="handleSave">{{ saveSuccess ? '已保存 ✓' : '保存' }}</el-button>
             </div>
-            <!-- 第二行：Mock 路径 -->
-            <div class="header-row">
-              <span class="addr-tag mock">Mock</span>
-              <el-input v-model="rule.url" placeholder="/api/path" class="url-input" />
-              <el-button type="primary" plain :icon="CopyDocument" @click="$emit('copy')" title="复制Mock地址" />
+            <!-- 第二行：Mock / Real 地址（卡片堆叠切换） -->
+            <div class="addr-stack" :class="addrMode">
+              <!-- 前景卡片（当前激活） -->
+              <div class="addr-card front" :class="addrMode"
+                :title="`点击切换为${addrMode === 'mock' ? 'Real' : 'Mock'}地址定义`"
+                @click="addrMode = addrMode === 'mock' ? 'real' : 'mock'">
+                <span class="addr-card-tag" :class="addrMode">{{ addrMode === 'mock' ? 'Mock' : 'Real' }}</span>
+              </div>
+              <!-- 后景卡片（非激活，露出底部） -->
+              <div class="addr-card back" :class="addrMode"
+                :title="`点击切换为${addrMode === 'mock' ? 'Real' : 'Mock'}地址定义`"
+                @click="addrMode = addrMode === 'mock' ? 'real' : 'mock'">
+                <span class="addr-card-tag" :class="addrMode === 'mock' ? 'real' : 'mock'">{{ addrMode === 'mock' ? 'Real' : 'Mock' }}</span>
+              </div>
+              <!-- 右侧内容区域 -->
+              <div class="addr-card-content">
+                <Transition name="addr-flip" mode="out-in">
+                  <div v-if="addrMode === 'mock'" key="mock" class="addr-input-row">
+                    <el-input v-model="rule.url" placeholder="/api/path" class="url-input" />
+                    <el-button type="primary" plain :icon="CopyDocument" @click="$emit('copy')" title="复制Mock地址" />
+                  </div>
+                  <div v-else key="real" class="addr-input-row">
+                    <el-input v-model="realPath" placeholder="/api/path" class="url-input" />
+                    <el-button plain :icon="CopyDocument" @click="handleCopyRealUrl" title="复制真实地址" />
+                    <el-button plain :icon="DocumentCopy" @click="handlePasteRealUrl" title="粘贴并解析URL" />
+                    <el-button plain @click="showRealDetail = !showRealDetail" :type="showRealDetail ? 'primary' : ''" :title="showRealDetail ? '收起地址配置' : '展开地址配置'">
+                      <el-icon :size="14"><component :is="showRealDetail ? ArrowDown : ArrowRight" /></el-icon>
+                    </el-button>
+                  </div>
+                </Transition>
+              </div>
             </div>
-            <!-- Mock URL 预览 -->
-            <div v-if="rule.url" class="addr-url-preview" @click="$emit('copy')" title="点击复制完整地址">
-              → {{ mockUrlFull }}
-            </div>
-            <!-- 第三行：Real 路径 + 操作按钮 -->
-            <div class="header-row">
-              <span class="addr-tag real">Real</span>
-              <el-input v-model="realPath" placeholder="/api/path" class="url-input" />
-              <el-button plain :icon="CopyDocument" @click="handleCopyRealUrl" title="复制真实地址" />
-              <el-button plain :icon="DocumentCopy" @click="handlePasteRealUrl" title="粘贴并解析URL" />
-              <el-button plain @click="showRealDetail = !showRealDetail" :type="showRealDetail ? 'primary' : ''" :title="showRealDetail ? '收起地址配置' : '展开地址配置'">
-                <el-icon :size="14"><component :is="showRealDetail ? ArrowDown : ArrowRight" /></el-icon>
-              </el-button>
-            </div>
+            <!-- URL 预览 -->
+            <Transition name="addr-preview" mode="out-in">
+              <div v-if="addrMode === 'mock' && rule.url" key="mock-preview" class="addr-url-preview" @click="$emit('copy')" title="点击复制完整地址">
+                → {{ mockUrlFull }}
+              </div>
+              <div v-else-if="addrMode === 'real' && realUrlFull" key="real-preview" class="addr-url-preview" @click="handleCopyRealUrl" title="点击复制完整地址">
+                → {{ realUrlFull }}
+              </div>
+            </Transition>
             <!-- Real 详细配置（条件展开） -->
-            <div v-if="showRealDetail" class="addr-detail-row">
-              <el-select v-model="realProtocol" style="width: 78px" size="small">
-                <el-option label="http" value="http" />
-                <el-option label="https" value="https" />
-              </el-select>
-              <span class="addr-sep">://</span>
-              <el-input v-model="realHost" placeholder="主机地址" size="small" style="flex: 2; min-width: 80px" />
-              <span class="addr-sep">:</span>
-              <el-input v-model="realPort" placeholder="端口" size="small" style="width: 56px" />
-              <span class="addr-sep">/</span>
-              <el-input v-model="realPrefix" placeholder="前缀" size="small" style="flex: 1; min-width: 60px" />
-            </div>
-            <!-- Real URL 预览 -->
-            <div v-if="realUrlFull" class="addr-url-preview" @click="handleCopyRealUrl" title="点击复制完整地址">
-              → {{ realUrlFull }}
-            </div>
+            <Transition name="addr-detail">
+              <div v-if="addrMode === 'real' && showRealDetail" class="addr-detail-row">
+                <el-select v-model="realProtocol" style="width: 78px" size="small">
+                  <el-option label="http" value="http" />
+                  <el-option label="https" value="https" />
+                </el-select>
+                <span class="addr-sep">://</span>
+                <el-input v-model="realHost" placeholder="主机地址" size="small" style="flex: 2; min-width: 80px" />
+                <span class="addr-sep">:</span>
+                <el-input v-model="realPort" placeholder="端口" size="small" style="width: 56px" />
+                <span class="addr-sep">/</span>
+                <el-input v-model="realPrefix" placeholder="前缀" size="small" style="flex: 1; min-width: 60px" />
+              </div>
+            </Transition>
             <!-- 路径参数标签 -->
             <div v-if="detectedPathParams.length" class="path-params-tags">
               <span class="path-params-label">路径参数：</span>
@@ -1332,14 +1353,117 @@ interface User {
 .header-row {
   display: flex; gap: 4px; align-items: center;
 }
-.addr-tag {
-  padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; white-space: nowrap;
+/* ====== 卡片堆叠切换器 ====== */
+.addr-stack {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  position: relative;
+  min-height: 40px;
 }
-.addr-tag.mock { background: #e1f3d8; color: #67C23A; }
-.addr-tag.real { background: #fdf6ec; color: #E6A23C; }
+/* 标签卡片容器：前景 + 后景叠在一起 */
+.addr-card {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: center center;
+}
+.addr-card.front {
+  z-index: 2;
+  top: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.addr-card.back {
+  z-index: 1;
+  top: 16px;
+  opacity: 0.35;
+  transform: scale(0.9);
+  box-shadow: none;
+}
+/* Mock 激活时：前景=mock色，后景=real色 */
+.addr-stack.mock .addr-card.front { background: #e1f3d8; }
+.addr-stack.mock .addr-card.back { background: #fdf6ec; }
+/* Real 激活时：前景=real色，后景=mock色 */
+.addr-stack.real .addr-card.front { background: #fdf6ec; }
+.addr-stack.real .addr-card.back { background: #e1f3d8; }
+/* hover 时后景卡片稍微突出 */
+.addr-stack:hover .addr-card.back {
+  opacity: 0.5;
+  top: 17px;
+  transform: scale(0.92);
+}
+/* 标签文字 */
+.addr-card-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1;
+}
+.addr-card-tag.mock { color: #67C23A; }
+.addr-card-tag.real { color: #E6A23C; }
+/* 右侧内容区 */
+.addr-card-content {
+  flex: 1;
+  min-width: 0;
+  margin-left: 50px;
+  padding-top: 2px;
+}
+.addr-input-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+/* ====== 翻转切换动画 ====== */
+.addr-flip-enter-active {
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.addr-flip-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.addr-flip-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+}
+.addr-flip-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.97);
+}
+/* ====== 预览行动画 ====== */
+.addr-preview-enter-active,
+.addr-preview-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.addr-preview-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.addr-preview-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+/* ====== 详细配置展开动画 ====== */
+.addr-detail-enter-active {
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.addr-detail-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.addr-detail-enter-from,
+.addr-detail-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
 /* 完整地址预览行 */
 .addr-url-preview {
-  padding: 0 0 0 10px;
+  padding: 0 0 0 54px;
   font-size: 11px;
   font-family: 'Courier New', Courier, monospace;
   color: var(--text-secondary);
@@ -1352,7 +1476,7 @@ interface User {
 .addr-url-preview:hover { color: var(--primary-color); }
 /* 真实地址展开配置行 */
 .addr-detail-row {
-  padding: 0 0 0 10px;
+  padding: 0 0 0 54px;
   display: flex;
   gap: 4px;
   align-items: center;
