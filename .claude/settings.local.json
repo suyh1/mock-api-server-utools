@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ide__getDiagnostics",
+      "Bash(npx vue-tsc:*)",
+      "Bash(npx vite build:*)",
+      "Bash(npm run build:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(npm install:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "WebSearch",
+      "Bash(sort:*)",
+      "Bash(xargs:*)",
+      "Bash(du:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(for dir in *\" 2\")",
+      "Bash(do rm -rf \"$dir\")",
+      "Bash(done)"
+    ]
+  }
+}
